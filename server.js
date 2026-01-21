@@ -1,46 +1,12 @@
-// server.js
+// server.js - 空壳之国（轻量互动版）
 // npm i ws
 const WebSocket = require("ws");
+
 const PORT = process.env.PORT || 3000;
 const wss = new WebSocket.Server({ port: PORT });
 
 /** -----------------------------
- *  Game constants
- * ------------------------------ */
-const FACTIONS = ["前政党", "建制派", "民粹党", "民主党派", "境外势力"];
-const ROLES = ["普通政客", "民粹强人", "独裁强人"]; // 暗面身份
-const MAX_TURNS = 8;
-
-const ACTIONS = [
-  { key: "mobilize_unify", name: "动员·团结", desc: "+L +1, 花R1", costR: 1 },
-  { key: "mobilize_divide", name: "动员·煽动", desc: "+C +1, -L1, 花R1", costR: 1 },
-  { key: "infiltrate", name: "渗透机构", desc: "+C +2, -L1, 花R2", costR: 2 },
-  { key: "agenda", name: "推动议程", desc: "推进本阵营进度 +1, 花R2", costR: 2 },
-  { key: "investigate", name: "调查/爆料", desc: "提高对手暴露度/削弱其R, 花R1", costR: 1 },
-  { key: "foreign_ops", name: "对外操作", desc: "+E +2, -L1, 花R1", costR: 1 },
-  { key: "trade", name: "政策交易", desc: "给/要资源（简化：自己+R1，-L1）", costR: 0 },
-];
-
-const SECRET_SKILLS = {
-  "普通政客": { name: "无", desc: "无" },
-  "民粹强人": { name: "夺取议程", desc: "本回合将一次行动效果翻倍，但暴露度+2（每局一次）" },
-  "独裁强人": { name: "冻结机构", desc: "本回合令对手C增益无效，并暴露度+1（每局一次）" },
-};
-
-// 事件牌：影响全局 + 提供回合特性
-const EVENTS = [
-  { name: "经济放缓", effects: { P: -1, L: -1 }, text: "蛋糕变小，情绪上头。" },
-  { name: "外部制裁", effects: { E: +1, P: -1, L: -1 }, text: "外部压力上升，内部互相甩锅。" },
-  { name: "科技突破", effects: { P: +2, L: +1 }, text: "短期繁荣，合法性回暖。" },
-  { name: "丑闻曝光", effects: { L: -2 }, text: "公共信任崩一截。" },
-  { name: "边境摩擦", effects: { E: +1, C: +1, L: -1 }, text: "安全叙事抬头。" },
-  { name: "大规模失业", effects: { P: -2, L: -2 }, text: "社会温度骤降。" },
-  { name: "国际援助", effects: { E: +1, P: +1, L: +1 }, text: "外部介入加深，但缓解了危机。" },
-  { name: "街头运动", effects: { L: -1, C: -1 }, text: "秩序与正当性同时被拷打。" },
-];
-
-/** -----------------------------
- *  Utilities
+ * Utilities
  * ------------------------------ */
 function randInt(n) { return Math.floor(Math.random() * n); }
 function shuffle(arr) {
@@ -52,49 +18,212 @@ function shuffle(arr) {
   return a;
 }
 function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+function now() { return Date.now(); }
 
 function safeSend(ws, obj) {
-  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+  try {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+  } catch {}
 }
 
-function broadcast(room, obj) {
-  room.players.forEach(p => {
-    if (p.kind === "human") safeSend(p.ws, obj);
-  });
+function isHuman(p) { return p.kind === "human"; }
+function isAI(p) { return p.kind === "ai"; }
+
+/** -----------------------------
+ * Game data
+ * ------------------------------ */
+const MAX_TURNS = 8;
+const HAND_SIZE = 5;
+
+const DECL_TAGS = [
+  { key: "SUPPORT", name: "拉支持" },
+  { key: "ATTACK",  name: "搞对手" },
+  { key: "MONEY",   name: "搞筹码" },
+  { key: "ALLY",    name: "结盟/断盟" },
+  { key: "COUP",    name: "准备/发动政变" },
+  { key: "VOTE",    name: "冲议题投票" },
+  { key: "BLUFF",   name: "打烟雾弹" },
+];
+
+const ROLE = {
+  NORMAL: "普通",
+  POPULIST: "民粹强人",   // 暴力政变：协商/出钱阻止
+  AUTOCRAT: "独裁强人",   // 军事接管：短反应阻止
+};
+
+const PHASE = {
+  LOBBY: "LOBBY",
+  PLOTTING: "PLOTTING",
+  ACTION: "ACTION",
+  REACTION: "REACTION",
+  VOTE: "VOTE",
+  CRISIS: "CRISIS",
+  CLEANUP: "CLEANUP",
+  COUP_NEGOTIATION: "COUP_NEGOTIATION",
+  COUP_REACTION: "COUP_REACTION",
+  END: "END",
+};
+
+// 行动牌（一个大堆）：type = ACTION / REACTION
+// tag 用于声明判定
+// effectKey 在服务器 switch 里结算
+function buildActionDeck() {
+  const cards = [];
+  let id = 1;
+  function add(name, type, tag, effectKey, params = {}, copies = 1, text = "") {
+    for (let i = 0; i < copies; i++) {
+      cards.push({
+        id: `C${id++}`,
+        name,
+        type,
+        tag,
+        effectKey,
+        params,
+        text,
+      });
+    }
+  }
+
+  // 支持类
+  add("宣传攻势", "ACTION", "SUPPORT", "GAIN_S", { s: 2 }, 4, "+2支持");
+  add("基层动员", "ACTION", "SUPPORT", "GAIN_S_GAIN_T", { s: 1, t: 1 }, 3, "+1支持 +1稳定");
+  add("危机公关", "ACTION", "SUPPORT", "GAIN_T", { t: 2 }, 3, "+2稳定");
+
+  // 筹码类
+  add("募捐活动", "ACTION", "MONEY", "GAIN_M", { m: 3 }, 4, "+3筹码");
+  add("政策交易", "ACTION", "MONEY", "GAIN_M_LOSE_T", { m: 2, t: 1 }, 3, "+2筹码 -1稳定");
+  add("暗箱运作", "ACTION", "MONEY", "STEAL_M", { m: 2 }, 2, "偷取目标2筹码");
+
+  // 攻击类
+  add("媒体操控", "ACTION", "ATTACK", "SHIFT_S", { s: 1 }, 4, "目标-1支持，你+1支持");
+  add("丑闻曝光", "ACTION", "ATTACK", "HIT_ST", { s: 1, t: 1 }, 3, "目标-1支持-1稳定");
+  add("间谍渗透", "ACTION", "ATTACK", "STEAL_CARD", {}, 2, "偷目标随机1张牌");
+
+  // 背刺（高风险）
+  add("政治背叛", "ACTION", "ATTACK", "BETRAY", { s: 2, t: 2 }, 2, "你+2支持，但你-2稳定且不可信+1");
+  add("政治暗杀", "ACTION", "ATTACK", "ASSASSIN", {}, 1, "目标支持降到0，你-3稳定");
+
+  // 联盟向
+  add("握手协议", "ACTION", "ALLY", "OFFER_ALLIANCE", {}, 3, "向目标提出结盟（需对方接受）");
+  add("撕毁协议", "ACTION", "ALLY", "BREAK_ALLIANCE", {}, 2, "单方面断盟");
+
+  // 反应牌（可在 REACTION / COUP 阶段用）
+  add("紧急止损", "REACTION", "SUPPORT", "REACT_CANCEL_T_LOSS", {}, 3, "取消本次你受到的稳定损失");
+  add("反政变动员", "REACTION", "COUP", "REACT_BLOCK_VIOLENT", {}, 1, "直接阻止暴力政变（一次性）");
+  add("将领倒戈", "REACTION", "COUP", "REACT_BLOCK_MILITARY", {}, 1, "直接阻止军事接管（一次性）");
+
+  return shuffle(cards);
+}
+
+// 议题牌（每回合翻一张）：含投票效果 + 危机阈值
+function buildAgendaDeck() {
+  const agendas = [
+    {
+      id: "A1",
+      name: "军事改革",
+      text: "通过：赞成者+1稳定；反对者-1支持。",
+      crisisNeed: 3,
+      crisisText: "若本回合危机贡献总筹码 <3：所有人-1稳定。",
+      pass: { yesVoter: { t: +1 }, noVoter: { s: -1 } },
+    },
+    {
+      id: "A2",
+      name: "社会福利",
+      text: "通过：所有人+1支持；总统额外-1筹码（当作买单）。",
+      crisisNeed: 2,
+      crisisText: "若危机贡献 <2：所有人-1稳定。",
+      pass: { all: { s: +1 }, president: { m: -1 } },
+    },
+    {
+      id: "A3",
+      name: "反腐败行动",
+      text: "通过：筹码最多者-2筹码；赞成者各+1支持。",
+      crisisNeed: 3,
+      crisisText: "若危机贡献 <3：支持最高者-1支持（背锅）。",
+      pass: { yesVoter: { s: +1 }, richest: { m: -2 } },
+      fail: { topSupport: { s: -1 } },
+    },
+    {
+      id: "A4",
+      name: "言论自由",
+      text: "通过：所有人抽1张行动牌。未通过：所有人-1稳定（舆论反噬）。",
+      crisisNeed: 2,
+      crisisText: "若危机贡献 <2：所有人-1稳定。",
+      pass: { allDraw: 1 },
+      fail: { all: { t: -1 } },
+    },
+    {
+      id: "A5",
+      name: "选举法改革",
+      text: "通过：选举胜利阈值从8降到7（本局永久）。未通过：无事发生。",
+      crisisNeed: 2,
+      crisisText: "若危机贡献 <2：所有人-1稳定。",
+      pass: { electionThreshold: 7 },
+    },
+    {
+      id: "A6",
+      name: "重建国家",
+      text: "通过：所有人稳定重置为5、手牌补到5；总统+1支持。",
+      crisisNeed: 4,
+      crisisText: "若危机贡献 <4：所有人-2稳定（重建失败）。",
+      pass: { rebuild: true, president: { s: +1 } },
+      fail: { all: { t: -1 } },
+    },
+  ];
+  return shuffle(agendas);
 }
 
 /** -----------------------------
- *  Room state
+ * Room state
  * ------------------------------ */
 const rooms = new Map();
 
-/**
- * player: {
- *   id, name, kind: "human"|"ai",
- *   ws? (human only),
- *   faction, role (secret),
- *   R, agenda, exposure,
- *   usedSecret (bool)
- * }
- */
 function createRoom(roomId) {
-  const deck = shuffle(EVENTS);
   const room = {
     id: roomId,
-    createdAt: Date.now(),
-    players: [],
+    createdAt: now(),
     started: false,
     turn: 0,
-    phase: "lobby", // lobby | event | action | shadow | end
-    currentPlayerIdx: 0,
-    eventDeck: deck,
-    discard: [],
+    phase: PHASE.LOBBY,
+    phaseEndsAt: null,
+
+    players: [],
+
+    // decks
+    actionDeck: [],
+    actionDiscard: [],
+    agendaDeck: [],
+    agendaDiscard: [],
+
+    currentAgenda: null,
+
+    // turn order
+    presidentIdx: 0,
+    currentIdx: 0,
+
+    // per-round bookkeeping
+    electionThreshold: 8,
+    allianceBonusUsedThisTurn: new Set(), // players who already received alliance +1S this turn
+
+    // challenges: targetId -> { challengerId, pot }
+    challenges: new Map(),
+
+    // alliance offers: { fromId, toId, expiresAt }
+    allianceOffer: null,
+
+    // vote
+    votes: new Map(), // playerId -> "YES"|"NO"|"ABSTAIN"
+
+    // crisis contributions
+    crisisContrib: new Map(), // playerId -> amount
+
+    // coup
+    coup: null, // { leaderId, type, contrib:Map, blockedByCard:boolean, endsAt:number }
+
+    actedThisTurn: new Set(),
+    reactionContext: null,
+
     log: [],
-    // global tracks
-    L: 6, C: 5, P: 6, E: 3,
-    crisis: 0,
-    winner: null,
-    ending: null,
   };
   rooms.set(roomId, room);
   return room;
@@ -104,617 +233,1302 @@ function getRoom(roomId) {
   return rooms.get(roomId) || createRoom(roomId);
 }
 
+function publicPlayerView(p) {
+  return {
+    id: p.id,
+    name: p.name,
+    kind: p.kind,
+    online: !!p.ws || p.kind === "ai",
+    S: p.S,
+    T: p.T,
+    M: p.M,
+    untrusted: p.untrusted || 0,
+    allianceWith: p.allianceWith || null,
+    coupW: p.coupW || 0, // 威胁条公开
+    exposed: !!p.exposed, // 若独裁政变被拦下，会公开身份（更像众矢之的）
+  };
+}
+
+function sumContrib(map) {
+  let s = 0;
+  for (const v of map.values()) s += v;
+  return s;
+}
+
 function publicState(room) {
   return {
-    id: room.id,
+    roomId: room.id,
     started: room.started,
     turn: room.turn,
     phase: room.phase,
-    currentPlayerIdx: room.currentPlayerIdx,
-    L: room.L, C: room.C, P: room.P, E: room.E,
-    crisis: room.crisis,
-    winner: room.winner,
-    ending: room.ending,
-    eventTop: room.currentEvent ? { name: room.currentEvent.name, text: room.currentEvent.text, effects: room.currentEvent.effects } : null,
-    players: room.players.map(p => ({
-      id: p.id, name: p.name, kind: p.kind,
-      faction: p.faction, // 阵营明牌
-      R: p.R, agenda: p.agenda, exposure: p.exposure,
-      // role 不公开
-      usedSecret: p.usedSecret
-    })),
-    log: room.log.slice(-80),
+    presidentId: room.players[room.presidentIdx]?.id || null,
+    currentPlayerId: room.players[room.currentIdx]?.id || null,
+    electionThreshold: room.electionThreshold,
+    agenda: room.currentAgenda ? {
+      id: room.currentAgenda.id,
+      name: room.currentAgenda.name,
+      text: room.currentAgenda.text,
+      crisisNeed: room.currentAgenda.crisisNeed,
+      crisisText: room.currentAgenda.crisisText,
+    } : null,
+    allianceOffer: room.allianceOffer ? { fromId: room.allianceOffer.fromId, toId: room.allianceOffer.toId } : null,
+    coup: room.coup ? {
+      leaderId: room.coup.leaderId,
+      type: room.coup.type,
+      // contributions公开显示总量即可（避免过多信息）
+      totalContrib: sumContrib(room.coup.contrib),
+      endsAt: room.coup.endsAt,
+      blockedByCard: !!room.coup.blockedByCard,
+    } : null,
+    phaseEndsAt: room.phaseEndsAt,
+    players: room.players.map(publicPlayerView),
+    log: room.log.slice(-120),
   };
 }
 
 function privateState(room, playerId) {
-  const p = room.players.find(x => x.id === playerId);
-  if (!p) return null;
+  const me = room.players.find(p => p.id === playerId);
+  if (!me) return null;
   return {
     me: {
-      id: p.id, name: p.name,
-      faction: p.faction,
-      role: p.role, // 暗面仅自己可见
-      secretSkill: SECRET_SKILLS[p.role],
-      R: p.R, agenda: p.agenda, exposure: p.exposure,
-      usedSecret: p.usedSecret,
+      id: me.id,
+      name: me.name,
+      role: me.role, // 私密
+      S: me.S, T: me.T, M: me.M,
+      untrusted: me.untrusted || 0,
+      allianceWith: me.allianceWith || null,
+      coupW: me.coupW || 0,
+      facedownId: me.facedownId || null,
+      declaration: { tag: me.declTag || null, text: me.declText || "" },
+      hand: me.hand.map(c => ({
+        id: c.id, name: c.name, type: c.type, tag: c.tag, text: c.text,
+      })),
     }
   };
 }
 
-/** -----------------------------
- *  Game setup / start
- * ------------------------------ */
-function addHuman(room, ws, name) {
-  const id = `H${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
-  room.players.push({
-    id, name, kind: "human", ws,
-    faction: null, role: null,
-    R: 4, agenda: 0, exposure: 0, usedSecret: false,
+function broadcast(room, obj) {
+  room.players.forEach(p => {
+    if (isHuman(p)) safeSend(p.ws, obj);
   });
-  return id;
-}
-
-function addAI(room, name) {
-  const id = `A${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
-  room.players.push({
-    id, name, kind: "ai",
-    faction: null, role: null,
-    R: 4, agenda: 0, exposure: 0, usedSecret: false,
-  });
-  return id;
-}
-
-function dealFactionsAndRoles(room) {
-  const factions = shuffle(FACTIONS);
-  // 让“境外势力”出现概率适中：如果玩家>=3则必有一个；否则随机
-  // 这里简单：从洗好的阵营里顺序发
-  room.players.forEach((p, i) => {
-    p.faction = factions[i % factions.length];
-  });
-
-  // 暗面身份：每局至少一个强人（民粹强人/独裁强人随机）
-  const rolesPool = room.players.map(() => "普通政客");
-  const strongIdx = randInt(room.players.length);
-  rolesPool[strongIdx] = randInt(2) === 0 ? "民粹强人" : "独裁强人";
-  // 额外强人（可选）：人数>=4再给一个
-  if (room.players.length >= 4) {
-    let idx2 = randInt(room.players.length);
-    if (idx2 === strongIdx) idx2 = (idx2 + 1) % room.players.length;
-    rolesPool[idx2] = randInt(2) === 0 ? "民粹强人" : "独裁强人";
-  }
-  room.players.forEach((p, i) => p.role = rolesPool[i]);
-}
-
-function startGame(room) {
-  if (room.started) return;
-  if (room.players.length < 2) return;
-  room.started = true;
-  room.turn = 1;
-  room.phase = "event";
-  room.currentPlayerIdx = randInt(room.players.length);
-  dealFactionsAndRoles(room);
-  room.log.push(`🎲 游戏开始！先手：${room.players[room.currentPlayerIdx].name}`);
-  drawEvent(room);
-  broadcastState(room);
-  // 如果先手是AI，推进
-  maybeRunAI(room);
-}
-
-function drawEvent(room) {
-  if (room.eventDeck.length === 0) {
-    room.eventDeck = shuffle(room.discard);
-    room.discard = [];
-  }
-  const ev = room.eventDeck.pop();
-  room.currentEvent = ev;
-  room.discard.push(ev);
-
-  // 应用事件效果
-  if (ev.effects) {
-    if (ev.effects.L) room.L += ev.effects.L;
-    if (ev.effects.C) room.C += ev.effects.C;
-    if (ev.effects.P) room.P += ev.effects.P;
-    if (ev.effects.E) room.E += ev.effects.E;
-  }
-  room.L = clamp(room.L, 0, 10);
-  room.C = clamp(room.C, 0, 10);
-  room.P = clamp(room.P, 0, 10);
-  room.E = clamp(room.E, 0, 10);
-
-  room.log.push(`📰 事件：${ev.name}（${ev.text}）`);
-  room.phase = "action";
 }
 
 function broadcastState(room) {
-  broadcast(room, { type: "state", state: publicState(room) });
-  // 每个玩家也发私密信息
+  const pub = publicState(room);
+  broadcast(room, { type: "state", state: pub });
   room.players.forEach(p => {
-    if (p.kind === "human") {
-      safeSend(p.ws, { type: "private", state: privateState(room, p.id) });
+    if (isHuman(p)) safeSend(p.ws, { type: "private", state: privateState(room, p.id) });
+  });
+}
+
+function log(room, line) {
+  room.log.push(line);
+}
+
+/** -----------------------------
+ * Core mechanics helpers
+ * ------------------------------ */
+function drawAction(room) {
+  if (room.actionDeck.length === 0) {
+    room.actionDeck = shuffle(room.actionDiscard);
+    room.actionDiscard = [];
+  }
+  return room.actionDeck.pop() || null;
+}
+
+function drawAgenda(room) {
+  if (room.agendaDeck.length === 0) {
+    room.agendaDeck = shuffle(room.agendaDiscard);
+    room.agendaDiscard = [];
+  }
+  const a = room.agendaDeck.pop() || null;
+  if (a) room.agendaDiscard.push(a);
+  return a;
+}
+
+function dealHands(room) {
+  room.players.forEach(p => {
+    while (p.hand.length < HAND_SIZE) {
+      const c = drawAction(room);
+      if (!c) break;
+      p.hand.push(c);
     }
   });
 }
 
-function endGame(room, winnerFaction, ending) {
-  room.phase = "end";
-  room.winner = winnerFaction;
-  room.ending = ending;
-  room.log.push(`🏁 终局：${ending} —— 胜利方：${winnerFaction}`);
-  broadcastState(room);
+function countContributors(map) {
+  let n = 0;
+  for (const v of map.values()) if (v > 0) n += 1;
+  return n;
 }
 
-/** -----------------------------
- *  Win conditions / crisis
- * ------------------------------ */
-function checkCrisisAndWin(room) {
-  // 危机：合法性或繁荣过低
-  if (room.L <= 2 || room.P <= 2) {
-    room.crisis += 1;
-    room.log.push(`🚨 国家危机升级！(危机层数 ${room.crisis})`);
-  }
+// 联盟收益/代价：
+// - 本回合第一次“获得支持 S+”时，盟友也 +1S（每回合每个被动只触发一次：按“收到的人”记）
+function applySupport(room, playerId, delta, reason = "") {
+  if (delta === 0) return;
+  const p = room.players.find(x => x.id === playerId);
+  if (!p) return;
+  const before = p.S;
+  p.S = clamp(p.S + delta, 0, 10);
+  if (reason) log(room, `✨ ${p.name} 支持 ${before}→${p.S}（${reason}）`);
 
-  // 立即胜利：境外势力
-  if (room.E >= 8) {
-    endGame(room, "境外势力", "外部影响阈值触发：国家进入外部锁定结局");
-    return true;
-  }
-
-  // 常规路线：民主/建制（合法性高且没崩）
-  if (room.L >= 9 && room.P >= 6 && room.crisis <= 1) {
-    // 这俩阵营更可能吃到这个结局：但胜利方按议程进度更高者优先
-    const best = pickBestByAgenda(room, ["民主党派", "建制派"]);
-    endGame(room, best || "建制派", "高合法性稳定结局：制度化/修补成功");
-    return true;
-  }
-
-  // 民粹/强人：控制力高
-  if (room.C >= 9 && room.L <= 6) {
-    const best = pickBestByAgenda(room, ["民粹党"]);
-    endGame(room, best || "民粹党", "控制力压倒性胜利：议程被强行改写");
-    return true;
-  }
-
-  // 前政党：控制力高但改革停滞（用 agenda 作为“旧秩序运作”的替代）
-  // 这里简化：前政党议程>=4 且 L 介于 3-7
-  const old = room.players.filter(p => p.faction === "前政党");
-  if (old.some(p => p.agenda >= 4) && room.L >= 3 && room.L <= 7) {
-    endGame(room, "前政党", "旧秩序回潮结局：机构与人事重新锁死");
-    return true;
-  }
-
-  // 崩盘：危机过高或回合耗尽
-  if (room.crisis >= 3) {
-    // 崩盘结算：谁的 C+agenda 更高谁吃到权力碎片；境外势力若E>=6优先赢
-    if (room.E >= 6) {
-      endGame(room, "境外势力", "崩盘外溢结局：外部趁乱完成锁定");
-      return true;
+  // 联盟被动：只在“获得支持”且 delta>0 时触发
+  if (delta > 0 && p.allianceWith) {
+    const ally = room.players.find(x => x.id === p.allianceWith);
+    if (ally && !room.allianceBonusUsedThisTurn.has(ally.id)) {
+      room.allianceBonusUsedThisTurn.add(ally.id);
+      const b2 = ally.S;
+      ally.S = clamp(ally.S + 1, 0, 10);
+      log(room, `🤝 联盟红利：${ally.name} 支持 ${b2}→${ally.S}（盟友顺风车）`);
     }
-    const best = room.players.slice().sort((a, b) => (b.CScore || 0) - (a.CScore || 0));
-    // 计算简单分数：个人agenda + (全局C/2) - 暴露度惩罚
-    let top = null;
-    let topScore = -1e9;
-    for (const p of room.players) {
-      const score = p.agenda + room.C / 2 - p.exposure * 0.3 + (p.faction === "民粹党" ? 0.3 : 0);
-      p.CScore = score;
-      if (score > topScore) { topScore = score; top = p; }
-    }
-    endGame(room, top ? top.faction : "民粹党", "崩盘碎片结局：赢家只是最后站着的人");
-    return true;
+  }
+}
+
+function applyStability(room, playerId, delta, reason = "", opts = {}) {
+  if (delta === 0) return;
+  const p = room.players.find(x => x.id === playerId);
+  if (!p) return;
+
+  // 反应牌“紧急止损”会给玩家一个本轮免疫标记
+  if (delta < 0 && p.cancelNextTLoss) {
+    p.cancelNextTLoss = false;
+    log(room, `🛡️ ${p.name} 触发「紧急止损」：取消本次稳定损失。`);
+    return;
   }
 
-  if (room.turn >= MAX_TURNS) {
-    // 到点结算：按 faction 的“议程总和”决定
-    const totals = {};
-    for (const f of FACTIONS) totals[f] = 0;
-    room.players.forEach(p => totals[p.faction] += p.agenda);
-    const bestFaction = Object.entries(totals).sort((a, b) => b[1] - a[1])[0][0];
-    endGame(room, bestFaction, "时间到：以议程推进为准的妥协结局");
+  const before = p.T;
+  p.T = clamp(p.T + delta, 0, 10);
+  if (reason) log(room, `🧱 ${p.name} 稳定 ${before}→${p.T}（${reason}）`);
+
+  // 联盟连坐：只在受到稳定损失（delta<0）时触发，让盟友也 -1T（防止递归）
+  if (delta < 0 && p.allianceWith && !opts._noAllianceDamage) {
+    const ally = room.players.find(x => x.id === p.allianceWith);
+    if (ally) {
+      const b2 = ally.T;
+      ally.T = clamp(ally.T - 1, 0, 10);
+      log(room, `🤝 联盟连坐：${ally.name} 稳定 ${b2}→${ally.T}（盟友背锅）`);
+    }
+  }
+}
+
+function applyMoney(room, playerId, delta, reason = "") {
+  if (delta === 0) return;
+  const p = room.players.find(x => x.id === playerId);
+  if (!p) return;
+  const before = p.M;
+  p.M = clamp(p.M + delta, 0, 10);
+  if (reason) log(room, `💰 ${p.name} 筹码 ${before}→${p.M}（${reason}）`);
+}
+
+function removeCardFromHand(player, cardId) {
+  const idx = player.hand.findIndex(c => c.id === cardId);
+  if (idx < 0) return null;
+  return player.hand.splice(idx, 1)[0];
+}
+
+function getPlayer(room, playerId) {
+  return room.players.find(p => p.id === playerId);
+}
+
+function isMyTurn(room, playerId) {
+  return room.players[room.currentIdx]?.id === playerId;
+}
+
+function nextIdx(room) {
+  return (room.currentIdx + 1) % room.players.length;
+}
+
+// ——关键修复：行动结束不要依赖 currentIdx（避免 REACTION 结束时跳人）——
+function idxOf(room, playerId) {
+  return room.players.findIndex(p => p.id === playerId);
+}
+function nextUnactedIdx(room, startIdx) {
+  for (let step = 1; step <= room.players.length; step++) {
+    const i = (startIdx + step) % room.players.length;
+    const pid = room.players[i]?.id;
+    if (pid && !room.actedThisTurn.has(pid)) return i;
+  }
+  return startIdx;
+}
+
+function checkWin(room) {
+  if (room.phase === PHASE.END) return true;
+  const threshold = room.electionThreshold;
+
+  // 立即选举胜利
+  const winner = room.players.find(p => p.S >= threshold);
+  if (winner) {
+    endGame(room, `${winner.name}（选举胜利）`, "支持度冲线，赢得选举。");
     return true;
   }
 
   return false;
 }
 
-function pickBestByAgenda(room, factions) {
-  const candidates = room.players.filter(p => factions.includes(p.faction));
-  if (candidates.length === 0) return null;
-  candidates.sort((a, b) => b.agenda - a.agenda);
-  return candidates[0].faction;
+function endGame(room, winnerText, endingText) {
+  room.phase = PHASE.END;
+  room.phaseEndsAt = null;
+  log(room, `🏁 终局：${winnerText} —— ${endingText}`);
+  broadcastState(room);
 }
 
 /** -----------------------------
- *  Apply actions
+ * Challenges (质疑押注)
  * ------------------------------ */
-function getPlayer(room, playerId) {
-  return room.players.find(p => p.id === playerId);
-}
-function isPlayersTurn(room, playerId) {
-  return room.players[room.currentPlayerIdx]?.id === playerId;
-}
-
-function factionModifiers(player, room) {
-  // 每个阵营一个小被动（原型级别）
-  // 前政党：渗透成本-1
-  // 建制派：事件负面减轻（这里简化为行动修补+1）
-  // 民粹党：动员更强（团结/煽动额外+1效果，但更易降L）
-  // 民主党派：调查更强（investigate额外提高对手暴露）
-  // 境外势力：对外更强（foreign_ops额外+1E）
-  return {
-    infiltrateCostDiscount: player.faction === "前政党" ? 1 : 0,
-    reformBonus: player.faction === "建制派" ? 1 : 0,
-    mobilizeBonus: player.faction === "民粹党" ? 1 : 0,
-    investigateBonus: player.faction === "民主党派" ? 1 : 0,
-    foreignBonus: player.faction === "境外势力" ? 1 : 0,
-  };
+function canChallenge(room, challengerId, targetId) {
+  const c = getPlayer(room, challengerId);
+  const t = getPlayer(room, targetId);
+  if (!c || !t) return false;
+  if (challengerId === targetId) return false;
+  if (c.M < 1 || t.M < 1) return false;
+  if (room.challenges.has(targetId)) return false;
+  return true;
 }
 
-function nextTurn(room) {
-  // 行动阶段：每人一次行动 -> 进入暗线阶段 -> 下一回合事件
-  // 这里我们简化：每次行动后换人；当回合每人都行动过一次后进入 shadow
-  // 用一个计数器 room.actionsThisTurn
-  room.actionsThisTurn = (room.actionsThisTurn || 0) + 1;
-  const totalPlayers = room.players.length;
+function setChallenge(room, challengerId, targetId) {
+  const c = getPlayer(room, challengerId);
+  const t = getPlayer(room, targetId);
+  if (!c || !t) return;
+  c.M -= 1; t.M -= 1;
+  room.challenges.set(targetId, { challengerId, pot: 2 });
+  log(room, `⚖️ 质疑成立：${c.name} 质疑 ${t.name}（双方各押1筹码进争议池）`);
+}
 
-  // 换到下一个玩家
-  room.currentPlayerIdx = (room.currentPlayerIdx + 1) % totalPlayers;
-
-  if (room.actionsThisTurn >= totalPlayers) {
-    // 进入暗线阶段：允许每人一次暗线技能（强人可用）
-    room.phase = "shadow";
-    room.shadowQueue = room.players.map(p => p.id);
-    room.log.push("🌑 进入暗线阶段：可发动隐藏技能（若有且未用）。");
-    // 暗线结束后结算/下一回合
-  } else {
-    room.phase = "action";
+function resolveChallengeIfAny(room, targetId, actualTag) {
+  const entry = room.challenges.get(targetId);
+  if (!entry) return;
+  const target = getPlayer(room, targetId);
+  const challenger = getPlayer(room, entry.challengerId);
+  if (!target || !challenger) {
+    room.challenges.delete(targetId);
+    return;
   }
+  const declared = target.declTag || "BLUFF";
+  const pot = entry.pot || 2;
+
+  // 判定：声明 tag 与 实际 tag 一致则目标赢，否则质疑者赢
+  if (declared === actualTag) {
+    applyMoney(room, target.id, pot, "争议池获胜");
+    applySupport(room, challenger.id, -1, "质疑失败丢脸");
+    log(room, `⚖️ 判定：${target.name} 行动与声明一致（${declared}），质疑失败。`);
+  } else {
+    applyMoney(room, challenger.id, pot, "争议池获胜");
+    applySupport(room, target.id, -1, "声明被打脸");
+    log(room, `⚖️ 判定：${target.name} 声明(${declared})≠实际(${actualTag})，质疑成功。`);
+  }
+  room.challenges.delete(targetId);
 }
 
-function finishShadowAndAdvance(room) {
-  // 暗线结束 -> 结算胜负 -> 下一回合
-  room.phase = "event";
-  room.actionsThisTurn = 0;
-  room.turn += 1;
-
-  // 基础回合收入：每人+R1；部分阵营额外
-  room.players.forEach(p => {
-    p.R += 1;
-    if (p.faction === "前政党") p.R += 1; // 旧系统吸血
-    if (p.faction === "民主党派" && room.L >= 7) p.R += 1; // 社会组织动员
-    p.R = clamp(p.R, 0, 10);
-  });
-
-  // 全局自然漂移：P 太低进一步拖累 L
-  if (room.P <= 3) room.L = clamp(room.L - 1, 0, 10);
-
-  // 抽事件
-  drawEvent(room);
-
-  // 胜负检查
-  if (checkCrisisAndWin(room)) return;
-
-  broadcastState(room);
-  maybeRunAI(room);
+/** -----------------------------
+ * Coup (政变)
+ * ------------------------------ */
+function canPrepCoup(p) {
+  return p.role === ROLE.POPULIST || p.role === ROLE.AUTOCRAT;
 }
 
-function applyAction(room, playerId, actionKey, payload = {}) {
-  if (!room.started || room.phase !== "action") return { ok: false, err: "不在行动阶段" };
-  if (!isPlayersTurn(room, playerId)) return { ok: false, err: "还没轮到你" };
-
+function prepCoup(room, playerId) {
   const p = getPlayer(room, playerId);
   if (!p) return { ok: false, err: "玩家不存在" };
+  if (!canPrepCoup(p)) return { ok: false, err: "你不是强人" };
+  if (p.M < 1) return { ok: false, err: "筹码不足（需要1）" };
+  if ((p.coupW || 0) >= 3) return { ok: false, err: "威胁条已满" };
+  p.M -= 1;
+  p.coupW = clamp((p.coupW || 0) + 1, 0, 3);
+  log(room, `🚩 ${p.name} 提升政变威胁 W=${p.coupW}（花费1筹码）`);
+  return { ok: true };
+}
 
-  const mods = factionModifiers(p, room);
-  const action = ACTIONS.find(a => a.key === actionKey);
-  if (!action) return { ok: false, err: "未知行动" };
-
-  let cost = action.costR;
-  if (actionKey === "infiltrate") cost = Math.max(0, cost - mods.infiltrateCostDiscount);
-  if (p.R < cost) return { ok: false, err: "资源不足" };
-
-  p.R -= cost;
-
-  // 处理行动效果
-  let logLine = `▶️ ${p.name}（${p.faction}）行动：${action.name}`;
-
-  if (actionKey === "mobilize_unify") {
-    room.L = clamp(room.L + 1 + mods.mobilizeBonus, 0, 10);
-    if (p.faction === "民粹党") room.P = clamp(room.P - 1, 0, 10); // 民粹动员的经济代价
-  }
-
-  if (actionKey === "mobilize_divide") {
-    room.C = clamp(room.C + 1 + mods.mobilizeBonus, 0, 10);
-    room.L = clamp(room.L - 1 - (p.faction === "民粹党" ? 1 : 0), 0, 10);
-    p.exposure = clamp(p.exposure + 1, 0, 10);
-  }
-
-  if (actionKey === "infiltrate") {
-    room.C = clamp(room.C + 2, 0, 10);
-    room.L = clamp(room.L - 1, 0, 10);
-    if (p.faction === "前政党") p.agenda += 1; // 旧系统渗透=推进旧议程
-  }
-
-  if (actionKey === "agenda") {
-    p.agenda += 1;
-    // 阵营差异：民主议程提高L；建制议程提高P；民粹议程提高C；境外议程提高E；前政党议程提高C但降L
-    if (p.faction === "民主党派") room.L = clamp(room.L + 1, 0, 10);
-    if (p.faction === "建制派") room.P = clamp(room.P + 1, 0, 10);
-    if (p.faction === "民粹党") room.C = clamp(room.C + 1, 0, 10);
-    if (p.faction === "境外势力") room.E = clamp(room.E + 1, 0, 10);
-    if (p.faction === "前政党") { room.C = clamp(room.C + 1, 0, 10); room.L = clamp(room.L - 1, 0, 10); }
-  }
-
-  if (actionKey === "investigate") {
-    // 选一个对手：简化为“当前最大威胁者”
-    const target = pickThreat(room, p.id);
-    if (target) {
-      const extra = 1 + mods.investigateBonus;
-      target.exposure = clamp(target.exposure + extra, 0, 10);
-      // 爆料可能让对方掉资源
-      if (target.exposure >= 5 && target.R > 0) target.R -= 1;
-      logLine += ` → 针对 ${target.name}（暴露+${extra}）`;
-    }
-  }
-
-  if (actionKey === "foreign_ops") {
-    room.E = clamp(room.E + 2 + mods.foreignBonus, 0, 10);
-    room.L = clamp(room.L - 1, 0, 10);
-    // 外部影响上升也会拖繁荣
-    room.P = clamp(room.P - 1, 0, 10);
-  }
-
-  if (actionKey === "trade") {
-    // 简化交易：自己+R1 但 -L1（暗箱交易侵蚀合法性）
-    p.R = clamp(p.R + 1, 0, 10);
-    room.L = clamp(room.L - 1, 0, 10);
-  }
-
-  room.log.push(logLine);
-
-  // 行动后检查胜负（行动可能触发阈值）
-  if (checkCrisisAndWin(room)) {
-    broadcastState(room);
+function canLaunchCoup(room, p) {
+  const W = p.coupW || 0;
+  if (W < 3) return { ok: false, reason: "威胁条未满（需W=3）" };
+  if (p.role === ROLE.POPULIST) {
+    if (p.S < 6) return { ok: false, reason: "支持不足（民粹需S≥6）" };
+    if (p.T < 2) return { ok: false, reason: "稳定不足（民粹需T≥2）" };
     return { ok: true };
   }
-
-  nextTurn(room);
-  broadcastState(room);
-  maybeRunAI(room);
-  return { ok: true };
+  if (p.role === ROLE.AUTOCRAT) {
+    if (p.S < 7) return { ok: false, reason: "支持不足（独裁需S≥7）" };
+    if (p.T < 4) return { ok: false, reason: "稳定不足（独裁需T≥4）" };
+    return { ok: true };
+  }
+  return { ok: false, reason: "你不是强人" };
 }
 
-function pickThreat(room, attackerId) {
-  // 威胁：优先找议程高、阵营目标接近胜利的
-  const others = room.players.filter(p => p.id !== attackerId);
-  if (others.length === 0) return null;
-  others.sort((a, b) => (b.agenda + b.R * 0.2) - (a.agenda + a.R * 0.2));
-  return others[0];
-}
-
-function applyShadow(room, playerId, skillKey) {
-  if (!room.started || room.phase !== "shadow") return { ok: false, err: "不在暗线阶段" };
-  if (!room.shadowQueue || room.shadowQueue.length === 0) return { ok: false, err: "暗线队列异常" };
-
-  const nextId = room.shadowQueue[0];
-  if (nextId !== playerId) return { ok: false, err: "还没轮到你发动暗线" };
-
+function launchCoup(room, playerId) {
   const p = getPlayer(room, playerId);
   if (!p) return { ok: false, err: "玩家不存在" };
+  const chk = canLaunchCoup(room, p);
+  if (!chk.ok) return { ok: false, err: chk.reason };
 
-  if (skillKey === "skip") {
-    room.log.push(`🌑 ${p.name} 选择不发动暗线技能。`);
-    room.shadowQueue.shift();
-  } else {
-    if (p.usedSecret) return { ok: false, err: "你本局已经用过暗线技能" };
-    if (p.role === "普通政客") return { ok: false, err: "你没有可用暗线技能" };
-
-    // 强人技能实现
-    if (p.role === "民粹强人" && skillKey === "populist_overdrive") {
-      // 让自己下一次行动翻倍：用一个标记
-      p.usedSecret = true;
-      p.overdrive = true;
-      p.exposure = clamp(p.exposure + 2, 0, 10);
-      room.log.push(`🔥 ${p.name} 发动「夺取议程」：下次行动效果翻倍，但暴露度+2。`);
-      room.shadowQueue.shift();
-    } else if (p.role === "独裁强人" && skillKey === "autocrat_freeze") {
-      p.usedSecret = true;
-      // 冻结对手C增益：给全局一个标记，持续到下一回合结束
-      room.freezeCFor = room.players.find(x => x.id !== p.id)?.id || null;
-      p.exposure = clamp(p.exposure + 1, 0, 10);
-      room.log.push(`🧊 ${p.name} 发动「冻结机构」：对手下回合C增益无效，暴露度+1。`);
-      room.shadowQueue.shift();
-    } else {
-      return { ok: false, err: "暗线参数不匹配" };
-    }
-  }
-
-  // 暗线阶段结束
-  if (room.shadowQueue.length === 0) {
-    // 清算冻结标记的生命周期在行动应用中处理（这里简单：下一回合开始仍有效，直到该玩家行动时消耗）
-    // 直接推进下一回合
-    if (checkCrisisAndWin(room)) {
-      broadcastState(room);
-      return { ok: true };
-    }
-    finishShadowAndAdvance(room);
-  } else {
-    // 轮到下一个暗线玩家
-    broadcastState(room);
-    maybeRunAI(room);
-  }
-  return { ok: true };
-}
-
-/** -----------------------------
- *  Overdrive / Freeze hooks
- * ------------------------------ */
-function maybeApplySpecialHooks(room, player, actionKey) {
-  // 行动前的特殊：独裁冻结
-  if (room.freezeCFor && room.freezeCFor === player.id) {
-    // 该玩家本次行动若会提高C，则取消C增益
-    // 我们用一个标记在 applyAction 内部做差异处理太麻烦，这里用简化方式：
-    // 若 actionKey 可能加C，则事后减回去。
-    player.frozenThisAction = true;
-    // 消耗冻结（只影响一次行动）
-    room.freezeCFor = null;
-  }
-}
-
-function postAdjustAfterAction(room, player, actionKey, beforeC) {
-  if (player.frozenThisAction) {
-    const deltaC = room.C - beforeC;
-    if (deltaC > 0) {
-      room.C = clamp(room.C - deltaC, 0, 10);
-      room.log.push(`🧊 冻结生效：${player.name} 的控制力增益被抵消。`);
-    }
-    player.frozenThisAction = false;
-  }
-}
-
-// 为了让 hook 生效，我们在 applyAction 里轻度改造：记录 beforeC，检查 overdrive
-const _applyActionOriginal = applyAction;
-applyAction = function(room, playerId, actionKey, payload = {}) {
-  if (!room.started || room.phase !== "action") return { ok: false, err: "不在行动阶段" };
-  if (!isPlayersTurn(room, playerId)) return { ok: false, err: "还没轮到你" };
-
-  const p = getPlayer(room, playerId);
-  if (!p) return { ok: false, err: "玩家不存在" };
-
-  // hooks before
-  const beforeC = room.C;
-  maybeApplySpecialHooks(room, p, actionKey);
-
-  // overdrive: 民粹强人下一次行动翻倍（简单实现：执行两次同一行动，但第二次不再扣费）
-  const isOverdrive = !!p.overdrive;
-  if (isOverdrive) p.overdrive = false;
-
-  // 执行一次正常行动
-  const res1 = _applyActionOriginal(room, playerId, actionKey, payload);
-  if (!res1.ok) return res1;
-
-  // overdrive 的第二次效果：只重复效果，不重复扣R、不重复换人/阶段
-  if (isOverdrive && room.phase !== "end") {
-    // 还原“换人/阶段推进”会非常麻烦，所以我们把翻倍实现为“补一次同等增益到关键轨道”
-    // 也就是：根据行动类型再加一次主要效果（不触发再次nextTurn）
-    const p2 = getPlayer(room, playerId);
-    if (p2) {
-      room.log.push(`🔥 夺取议程加成：${p2.name} 的行动效果被放大。`);
-      if (actionKey === "mobilize_unify") room.L = clamp(room.L + 1, 0, 10);
-      if (actionKey === "mobilize_divide") room.C = clamp(room.C + 1, 0, 10);
-      if (actionKey === "infiltrate") room.C = clamp(room.C + 2, 0, 10);
-      if (actionKey === "agenda") p2.agenda += 1;
-      if (actionKey === "foreign_ops") room.E = clamp(room.E + 2, 0, 10);
-      if (actionKey === "investigate") {
-        const t = pickThreat(room, playerId);
-        if (t) t.exposure = clamp(t.exposure + 1, 0, 10);
-      }
-      if (actionKey === "trade") p2.R = clamp(p2.R + 1, 0, 10);
-    }
-    // 强力可能触发胜利
-    if (checkCrisisAndWin(room)) {
-      broadcastState(room);
-      return { ok: true };
-    }
-    broadcastState(room);
-  }
-
-  // hooks after（冻结抵消）
-  postAdjustAfterAction(room, p, actionKey, beforeC);
-  return { ok: true };
-};
-
-/** -----------------------------
- *  AI logic
- * ------------------------------ */
-function aiChooseAction(room, aiPlayer) {
-  // 简单启发式：按阵营目标拉轨道/推议程
-  // 同时如果资源够就 agenda，否则做阵营倾向的行动
-  const can = (key) => {
-    const act = ACTIONS.find(a => a.key === key);
-    if (!act) return false;
-    let cost = act.costR;
-    if (key === "infiltrate" && aiPlayer.faction === "前政党") cost = Math.max(0, cost - 1);
-    return aiPlayer.R >= cost;
+  const type = (p.role === ROLE.POPULIST) ? "VIOLENT" : "MILITARY";
+  room.coup = {
+    leaderId: p.id,
+    type,
+    contrib: new Map(),
+    blockedByCard: false,
+    endsAt: now() + (type === "VIOLENT" ? 30000 : 12000),
   };
 
-  // 终局冲刺
-  if (aiPlayer.faction === "境外势力") {
-    if (room.E >= 7 && can("foreign_ops")) return "foreign_ops";
-    if (can("agenda")) return "agenda";
-    if (can("foreign_ops")) return "foreign_ops";
+  if (type === "VIOLENT") {
+    room.phase = PHASE.COUP_NEGOTIATION;
+    room.phaseEndsAt = room.coup.endsAt;
+    log(room, `🧨 ${p.name} 发动【暴力政变】！30秒协商：至少两人各出≥2筹码 或 总筹码≥4 可阻止。也可打出“反政变动员”。`);
+  } else {
+    room.phase = PHASE.COUP_REACTION;
+    room.phaseEndsAt = room.coup.endsAt;
+    log(room, `🪖 ${p.name} 发动【军事接管】！12秒反应：打出“将领倒戈”或 至少两人合计出≥6筹码 才能阻止。`);
   }
-  if (aiPlayer.faction === "民主党派") {
-    if (room.L <= 6 && can("agenda")) return "agenda"; // 议程带L
-    if (can("mobilize_unify")) return "mobilize_unify";
-    if (can("investigate") && room.L <= 5) return "investigate";
-  }
-  if (aiPlayer.faction === "建制派") {
-    if (room.P <= 5 && can("agenda")) return "agenda";
-    if (can("mobilize_unify")) return "mobilize_unify";
-    if (can("trade")) return "trade";
-  }
-  if (aiPlayer.faction === "民粹党") {
-    if (room.C <= 7 && can("mobilize_divide")) return "mobilize_divide";
-    if (can("agenda")) return "agenda";
-    if (can("infiltrate")) return "infiltrate";
-  }
-  if (aiPlayer.faction === "前政党") {
-    if (can("infiltrate")) return "infiltrate";
-    if (can("agenda")) return "agenda";
-    if (can("trade")) return "trade";
-  }
-
-  // 通用：能推议程就推
-  if (can("agenda")) return "agenda";
-  // 否则找最便宜的
-  const cheap = ["mobilize_unify", "mobilize_divide", "investigate", "foreign_ops", "trade"].find(can);
-  return cheap || "trade";
+  return { ok: true };
 }
 
-function aiMaybeUseShadow(room, aiPlayer) {
-  if (aiPlayer.usedSecret) return "skip";
-  if (aiPlayer.role === "民粹强人") {
-    // 如果快接近赢或资源充足，就开
-    if (aiPlayer.R >= 2 || aiPlayer.agenda >= 3) return "populist_overdrive";
+function contributeToCoup(room, playerId, amount) {
+  const coup = room.coup;
+  if (!coup) return { ok: false, err: "当前没有政变" };
+  if (playerId === coup.leaderId) return { ok: false, err: "发动者不能出钱阻止" };
+  const p = getPlayer(room, playerId);
+  if (!p) return { ok: false, err: "玩家不存在" };
+  const a = clamp(Number(amount || 0), 0, 10);
+  if (a <= 0) return { ok: false, err: "贡献必须>0" };
+  if (p.M < a) return { ok: false, err: "筹码不足" };
+
+  p.M -= a;
+  coup.contrib.set(playerId, (coup.contrib.get(playerId) || 0) + a);
+  log(room, `🧾 ${p.name} 为阻止政变贡献 ${a} 筹码。`);
+  return { ok: true };
+}
+
+function anyContributorAtLeast(contribMap, minEach, needCount) {
+  let c = 0;
+  for (const v of contribMap.values()) {
+    if (v >= minEach) c += 1;
   }
-  if (aiPlayer.role === "独裁强人") {
-    // 如果对手控制力高或快冲刺就开
-    if (room.C >= 7) return "autocrat_freeze";
+  return c >= needCount;
+}
+
+function finalizeCoup(room) {
+  const coup = room.coup;
+  if (!coup) return;
+
+  const leader = getPlayer(room, coup.leaderId);
+  if (!leader) {
+    room.coup = null;
+    return;
   }
-  return "skip";
+
+  const total = sumContrib(coup.contrib);
+  const contributors = countContributors(coup.contrib);
+
+  if (coup.type === "VIOLENT") {
+    const blocked = coup.blockedByCard || (total >= 4 && contributors >= 2) || anyContributorAtLeast(coup.contrib, 2, 2);
+    if (blocked) {
+      applySupport(room, leader.id, -2, "政变被阻止");
+      leader.coupW = 0;
+      for (const [pid, amt] of coup.contrib.entries()) {
+        if (amt > 0) applySupport(room, pid, +1, "阻止政变（保国派）");
+      }
+      log(room, `✅ 暴力政变被阻止！`);
+      room.coup = null;
+
+      room.phase = PHASE.VOTE;
+      room.phaseEndsAt = now() + 20000;
+      broadcastState(room);
+      maybeRunAI(room);
+      return;
+    } else {
+      endGame(room, `${leader.name}（暴力政变成功）`, "政权被夺取，游戏结束。");
+      return;
+    }
+  } else {
+    const blocked = coup.blockedByCard || (total >= 6 && contributors >= 2) || anyContributorAtLeast(coup.contrib, 3, 2);
+    if (blocked) {
+      applyStability(room, leader.id, -3, "军事接管被阻止");
+      leader.coupW = 0;
+      leader.exposed = true;
+      log(room, `✅ 军事接管被阻止！${leader.name} 身份暴露，军心受挫。`);
+      room.coup = null;
+
+      room.phase = PHASE.VOTE;
+      room.phaseEndsAt = now() + 20000;
+      broadcastState(room);
+      maybeRunAI(room);
+      return;
+    } else {
+      endGame(room, `${leader.name}（军事接管成功）`, "军队接管，游戏结束。");
+      return;
+    }
+  }
+}
+
+/** -----------------------------
+ * Agenda vote & crisis
+ * ------------------------------ */
+function autoVoteIfMissing(room) {
+  room.players.forEach(p => {
+    if (!room.votes.has(p.id)) room.votes.set(p.id, "ABSTAIN");
+  });
+}
+
+function resolveVote(room) {
+  const agenda = room.currentAgenda;
+  if (!agenda) return;
+
+  autoVoteIfMissing(room);
+
+  let yes = 0, no = 0;
+  for (const p of room.players) {
+    const v = room.votes.get(p.id);
+    if (v === "YES") yes += 1;
+    if (v === "NO") no += 1;
+  }
+  const passed = yes > no;
+  log(room, `🗳️ 投票结果：YES=${yes} / NO=${no} / 通过=${passed ? "是" : "否"}`);
+
+  if (passed) applyAgendaEffects(room, agenda.pass);
+  else if (agenda.fail) applyAgendaEffects(room, agenda.fail);
+
+  room.votes.clear();
+}
+
+function applyAgendaEffects(room, eff) {
+  if (!eff) return;
+
+  const president = room.players[room.presidentIdx];
+  const richest = room.players.slice().sort((a, b) => b.M - a.M)[0];
+  const topSupport = room.players.slice().sort((a, b) => b.S - a.S)[0];
+
+  if (eff.yesVoter || eff.noVoter) {
+    room.players.forEach(p => {
+      const v = room.votes.get(p.id) || "ABSTAIN";
+      if (v === "YES" && eff.yesVoter) applyDeltaBundle(room, p.id, eff.yesVoter, "议题奖励");
+      if (v === "NO" && eff.noVoter) applyDeltaBundle(room, p.id, eff.noVoter, "议题惩罚");
+    });
+  }
+
+  if (eff.all) {
+    room.players.forEach(p => applyDeltaBundle(room, p.id, eff.all, "议题效果"));
+  }
+  if (eff.president && president) {
+    applyDeltaBundle(room, president.id, eff.president, "总统议题效果");
+  }
+  if (eff.richest && richest) {
+    applyDeltaBundle(room, richest.id, eff.richest, "议题指向：筹码最多者");
+  }
+  if (eff.topSupport && topSupport) {
+    applyDeltaBundle(room, topSupport.id, eff.topSupport, "议题指向：支持最高者");
+  }
+  if (eff.allDraw) {
+    const n = Number(eff.allDraw) || 1;
+    room.players.forEach(p => {
+      for (let i = 0; i < n; i++) {
+        const c = drawAction(room);
+        if (c) p.hand.push(c);
+      }
+    });
+    log(room, `📥 议题效果：所有人抽${n}张牌。`);
+  }
+  if (eff.electionThreshold) {
+    room.electionThreshold = eff.electionThreshold;
+    log(room, `📌 选举阈值变更：支持度达到 ${room.electionThreshold} 即可赢。`);
+  }
+  if (eff.rebuild) {
+    room.players.forEach(p => {
+      p.T = 5;
+      while (p.hand.length < HAND_SIZE) {
+        const c = drawAction(room);
+        if (!c) break;
+        p.hand.push(c);
+      }
+      while (p.hand.length > HAND_SIZE) {
+        const drop = p.hand.pop();
+        room.actionDiscard.push(drop);
+      }
+    });
+    log(room, `🏗️ 重建：所有人稳定重置为5，手牌补到5。`);
+  }
+}
+
+function applyDeltaBundle(room, playerId, bundle, reasonPrefix) {
+  if (!bundle) return;
+  if (bundle.s) applySupport(room, playerId, bundle.s, reasonPrefix);
+  if (bundle.t) applyStability(room, playerId, bundle.t, reasonPrefix);
+  if (bundle.m) applyMoney(room, playerId, bundle.m, reasonPrefix);
+}
+
+// 危机：贡献总筹码不足则惩罚；贡献者最多者加成
+function resolveCrisis(room) {
+  const agenda = room.currentAgenda;
+  if (!agenda) return;
+
+  const need = agenda.crisisNeed || 0;
+  let total = 0;
+  let best = { pid: null, amt: -1 };
+
+  for (const p of room.players) {
+    const amt = room.crisisContrib.get(p.id) || 0;
+    total += amt;
+    if (amt > best.amt) best = { pid: p.id, amt };
+  }
+
+  if (need > 0) {
+    if (total < need) {
+      if (room.currentAgenda.id === "A6") {
+        room.players.forEach(p => applyStability(room, p.id, -2, "危机未应对"));
+      } else if (room.currentAgenda.id === "A3") {
+        const topSupport = room.players.slice().sort((a, b) => b.S - a.S)[0];
+        if (topSupport) applySupport(room, topSupport.id, -1, "危机背锅");
+        log(room, `🚨 危机未应对：${agenda.crisisText}`);
+      } else {
+        room.players.forEach(p => applyStability(room, p.id, -1, "危机未应对"));
+        log(room, `🚨 危机未应对：${agenda.crisisText}`);
+      }
+    } else {
+      log(room, `✅ 危机应对成功：总贡献 ${total}/${need}`);
+      for (const p of room.players) {
+        const amt = room.crisisContrib.get(p.id) || 0;
+        if (amt > 0) applyStability(room, p.id, +1, "危机应对贡献");
+      }
+      if (best.pid && best.amt > 0) applySupport(room, best.pid, +1, "危机领导者");
+    }
+  }
+
+  room.crisisContrib.clear();
+}
+
+/** -----------------------------
+ * Action resolution
+ * ------------------------------ */
+function resolveActionCard(room, actorId, card, targetId = null) {
+  const actor = getPlayer(room, actorId);
+  if (!actor) return;
+  const tag = card.tag;
+
+  switch (card.effectKey) {
+    case "GAIN_S":
+      applySupport(room, actorId, card.params.s || 1, card.name);
+      break;
+
+    case "GAIN_T":
+      applyStability(room, actorId, card.params.t || 1, card.name);
+      break;
+
+    case "GAIN_M":
+      applyMoney(room, actorId, card.params.m || 1, card.name);
+      break;
+
+    case "GAIN_S_GAIN_T":
+      applySupport(room, actorId, card.params.s || 1, card.name);
+      applyStability(room, actorId, card.params.t || 1, card.name);
+      break;
+
+    case "GAIN_M_LOSE_T":
+      applyMoney(room, actorId, card.params.m || 1, card.name);
+      applyStability(room, actorId, -(card.params.t || 1), card.name);
+      break;
+
+    case "SHIFT_S": {
+      const target = getPlayer(room, targetId) || pickOther(room, actorId);
+      if (!target) break;
+      applySupport(room, target.id, -(card.params.s || 1), `${card.name}（被压）`);
+      applySupport(room, actorId, +(card.params.s || 1), `${card.name}（获利）`);
+      break;
+    }
+
+    case "HIT_ST": {
+      const target = getPlayer(room, targetId) || pickOther(room, actorId);
+      if (!target) break;
+      applySupport(room, target.id, -(card.params.s || 1), `${card.name}`);
+      applyStability(room, target.id, -(card.params.t || 1), `${card.name}`);
+      break;
+    }
+
+    case "STEAL_M": {
+      const target = getPlayer(room, targetId) || pickOther(room, actorId);
+      if (!target) break;
+      const m = card.params.m || 2;
+      const take = Math.min(m, target.M);
+      target.M -= take;
+      actor.M = clamp(actor.M + take, 0, 10);
+      log(room, `🧾 ${actor.name} 通过「${card.name}」从 ${target.name} 偷走 ${take} 筹码。`);
+      break;
+    }
+
+    case "STEAL_CARD": {
+      const target = getPlayer(room, targetId) || pickOther(room, actorId);
+      if (!target || target.hand.length === 0) break;
+      const idx = randInt(target.hand.length);
+      const stolen = target.hand.splice(idx, 1)[0];
+      actor.hand.push(stolen);
+      log(room, `🕵️ ${actor.name} 通过「${card.name}」从 ${target.name} 手里偷走1张牌。`);
+      break;
+    }
+
+    case "BETRAY": {
+      applySupport(room, actorId, card.params.s || 2, card.name);
+      applyStability(room, actorId, -(card.params.t || 2), card.name);
+      actor.untrusted = clamp((actor.untrusted || 0) + 1, 0, 9);
+      log(room, `🧷 ${actor.name} 获得“不可信”标记（谈判会更难）。`);
+      break;
+    }
+
+    case "ASSASSIN": {
+      const target = getPlayer(room, targetId) || pickOther(room, actorId);
+      if (!target) break;
+      if (target.S < 4) {
+        log(room, `❌ ${actor.name} 试图暗杀，但目标支持不足4，行动失败。`);
+        break;
+      }
+      log(room, `☠️ ${actor.name} 对 ${target.name} 发动「政治暗杀」：目标支持归零，但自己-3稳定。`);
+      target.S = 0;
+      applyStability(room, actorId, -3, card.name);
+      break;
+    }
+
+    case "OFFER_ALLIANCE": {
+      const target = getPlayer(room, targetId) || pickOther(room, actorId);
+      if (!target) break;
+      if (actor.allianceWith || target.allianceWith) {
+        log(room, `🤝 结盟失败：双方之一已有联盟。`);
+        break;
+      }
+      room.allianceOffer = { fromId: actorId, toId: target.id, expiresAt: now() + 15000 };
+      room.phase = PHASE.REACTION;
+      room.phaseEndsAt = room.allianceOffer.expiresAt;
+      room.reactionContext = { type: "ALLIANCE_OFFER", fromId: actorId, toId: target.id };
+      log(room, `🤝 ${actor.name} 向 ${target.name} 提出结盟（15秒内可接受）。`);
+      break;
+    }
+
+    case "BREAK_ALLIANCE": {
+      if (!actor.allianceWith) {
+        log(room, `🤝 ${actor.name} 试图断盟，但你当前没有盟友。`);
+        break;
+      }
+      const ally = getPlayer(room, actor.allianceWith);
+      const aName = ally ? ally.name : "（未知）";
+      if (ally) ally.allianceWith = null;
+      actor.allianceWith = null;
+      log(room, `💥 ${actor.name} 单方面撕毁联盟，与 ${aName} 断盟。`);
+      break;
+    }
+
+    default:
+      log(room, `（未实现的牌效果：${card.effectKey}）`);
+  }
+
+  room.actionDiscard.push(card);
+  return tag;
+}
+
+function pickOther(room, actorId) {
+  const others = room.players.filter(p => p.id !== actorId);
+  if (others.length === 0) return null;
+  return others.slice().sort((a, b) => b.S - a.S)[0];
+}
+
+/** -----------------------------
+ * Reactions
+ * ------------------------------ */
+function playReaction(room, playerId, cardId) {
+  const p = getPlayer(room, playerId);
+  if (!p) return { ok: false, err: "玩家不存在" };
+
+  if (![PHASE.REACTION, PHASE.COUP_NEGOTIATION, PHASE.COUP_REACTION].includes(room.phase)) {
+    return { ok: false, err: "当前不能打反应牌" };
+  }
+
+  const card = removeCardFromHand(p, cardId);
+  if (!card) return { ok: false, err: "手牌不存在" };
+  if (card.type !== "REACTION") {
+    p.hand.push(card);
+    return { ok: false, err: "这不是反应牌" };
+  }
+
+  switch (card.effectKey) {
+    case "REACT_CANCEL_T_LOSS":
+      p.cancelNextTLoss = true;
+      log(room, `🛡️ ${p.name} 打出反应牌「${card.name}」：下次稳定损失取消。`);
+      break;
+
+    case "REACT_BLOCK_VIOLENT":
+      if (room.coup && room.coup.type === "VIOLENT") {
+        room.coup.blockedByCard = true;
+        log(room, `🧯 ${p.name} 打出「${card.name}」：暴力政变将被阻止！`);
+      } else {
+        log(room, `（${p.name} 的「${card.name}」未命中：当前不是暴力政变）`);
+      }
+      break;
+
+    case "REACT_BLOCK_MILITARY":
+      if (room.coup && room.coup.type === "MILITARY") {
+        room.coup.blockedByCard = true;
+        log(room, `🧯 ${p.name} 打出「${card.name}」：军事接管将被阻止！`);
+      } else {
+        log(room, `（${p.name} 的「${card.name}」未命中：当前不是军事接管）`);
+      }
+      break;
+
+    default:
+      log(room, `（未实现的反应牌：${card.effectKey}）`);
+  }
+
+  room.actionDiscard.push(card);
+  return { ok: true };
+}
+
+/** -----------------------------
+ * Game flow
+ * ------------------------------ */
+function startGame(room) {
+  if (room.started) return;
+  if (room.players.length < 2) return;
+
+  room.started = true;
+  room.turn = 1;
+  room.phase = PHASE.PLOTTING;
+  room.phaseEndsAt = now() + 30000;
+
+  room.actionDeck = buildActionDeck();
+  room.actionDiscard = [];
+  room.agendaDeck = buildAgendaDeck();
+  room.agendaDiscard = [];
+
+  room.players.forEach(p => {
+    p.S = 5; p.T = 5; p.M = 3;
+    p.hand = [];
+    p.facedownId = null;
+    p.declTag = "BLUFF";
+    p.declText = "";
+    p.untrusted = 0;
+    p.allianceWith = null;
+    p.coupW = 0;
+    p.exposed = false;
+    p.cancelNextTLoss = false;
+  });
+
+  room.presidentIdx = randInt(room.players.length);
+  room.currentIdx = room.presidentIdx;
+
+  // 强人分配：全局仅 1 名强人（随机民粹/独裁）
+  const strongIdx = randInt(room.players.length);
+  const strongType = randInt(2) === 0 ? ROLE.POPULIST : ROLE.AUTOCRAT;
+  room.players.forEach((p, i) => p.role = (i === strongIdx ? strongType : ROLE.NORMAL));
+
+  room.currentAgenda = drawAgenda(room);
+  room.allianceBonusUsedThisTurn.clear();
+  room.challenges.clear();
+  room.allianceOffer = null;
+  room.votes.clear();
+  room.crisisContrib.clear();
+  room.coup = null;
+
+  room.actedThisTurn = new Set();
+  room.reactionContext = null;
+
+  log(room, `🎲 游戏开始！总统：${room.players[room.presidentIdx].name}（回合${room.turn}/${MAX_TURNS}）`);
+  log(room, `📰 本回合议题：${room.currentAgenda.name} —— ${room.currentAgenda.text}`);
+  log(room, `⏳ 密谋阶段 30 秒：选暗置牌 + 选声明标签（可质疑）`);
+
+  dealHands(room);
+  broadcastState(room);
+  maybeRunAI(room);
+}
+
+function advanceRound(room) {
+  room.turn += 1;
+  room.allianceBonusUsedThisTurn.clear();
+  room.challenges.clear();
+  room.allianceOffer = null;
+  room.votes.clear();
+  room.crisisContrib.clear();
+  room.coup = null;
+
+  room.actedThisTurn = new Set();
+  room.reactionContext = null;
+
+  room.presidentIdx = (room.presidentIdx + 1) % room.players.length;
+  room.currentIdx = room.presidentIdx;
+
+  room.currentAgenda = drawAgenda(room);
+
+  room.players.forEach(p => {
+    p.facedownId = null;
+    p.declTag = "BLUFF";
+    p.declText = "";
+    p.cancelNextTLoss = false;
+  });
+
+  room.phase = PHASE.PLOTTING;
+  room.phaseEndsAt = now() + 30000;
+
+  log(room, `🔁 新回合：总统：${room.players[room.presidentIdx].name}（回合${room.turn}/${MAX_TURNS}）`);
+  log(room, `📰 本回合议题：${room.currentAgenda.name} —— ${room.currentAgenda.text}`);
+  log(room, `⏳ 密谋阶段 30 秒：选暗置牌 + 选声明标签（可质疑）`);
+
+  dealHands(room);
+  broadcastState(room);
+  maybeRunAI(room);
+}
+
+function moveToActionPhase(room) {
+  room.phase = PHASE.ACTION;
+  room.phaseEndsAt = null;
+  room.currentIdx = room.presidentIdx;
+
+  room.actedThisTurn = new Set();
+  room.reactionContext = null;
+
+  room.players.forEach(p => {
+    if (!p.facedownId && p.hand.length > 0) {
+      p.facedownId = p.hand[0].id;
+      if (!p.declTag) p.declTag = "BLUFF";
+    }
+  });
+
+  log(room, `🎭 进入公开行动阶段：按顺序每人一次行动。`);
+  broadcastState(room);
+  maybeRunAI(room);
+}
+
+// ——关键修复：结束行动要明确“谁结束了”——
+function finishAction(room, actorId) {
+  if (actorId) room.actedThisTurn.add(actorId);
+
+  if (room.actedThisTurn.size >= room.players.length) {
+    room.phase = PHASE.VOTE;
+    room.phaseEndsAt = now() + 20000;
+    log(room, `🗳️ 进入投票阶段（20秒）：对议题投 YES/NO/ABSTAIN`);
+    broadcastState(room);
+    maybeRunAI(room);
+    return;
+  }
+
+  const actorIdx = idxOf(room, actorId);
+  const base = actorIdx >= 0 ? actorIdx : room.currentIdx;
+  room.currentIdx = nextUnactedIdx(room, base);
+
+  room.phase = PHASE.ACTION;
+  room.phaseEndsAt = null;
+
+  broadcastState(room);
+  maybeRunAI(room);
+}
+
+function moveToCrisis(room) {
+  room.phase = PHASE.CRISIS;
+  room.phaseEndsAt = now() + 15000;
+  log(room, `🚨 危机阶段（15秒）：自愿贡献筹码应对（目标 ${room.currentAgenda.crisisNeed}）。`);
+  broadcastState(room);
+  maybeRunAI(room);
+}
+
+function cleanupAndMaybeAdvance(room) {
+  room.phase = PHASE.CLEANUP;
+  room.phaseEndsAt = null;
+
+  room.players.forEach(p => {
+    while (p.hand.length > HAND_SIZE) {
+      const drop = p.hand.pop();
+      room.actionDiscard.push(drop);
+    }
+  });
+
+  if (checkWin(room)) return;
+
+  if (room.turn >= MAX_TURNS) {
+    const sorted = room.players.slice().sort((a, b) => (b.S - a.S) || (b.T - a.T) || (b.M - a.M));
+    const w = sorted[0];
+    endGame(room, `${w.name}（时间到胜出）`, `回合到点，按支持/稳定/筹码结算最高者胜。`);
+    return;
+  }
+
+  advanceRound(room);
+}
+
+/** -----------------------------
+ * AI
+ * ------------------------------ */
+function aiChooseDeclTagFromCard(card) {
+  if (!card) return "BLUFF";
+  return card.tag || "BLUFF";
+}
+
+function aiPickTarget(room, meId) {
+  const others = room.players.filter(p => p.id !== meId);
+  if (others.length === 0) return null;
+  return others.slice().sort((a, b) => b.S - a.S)[0].id;
+}
+
+function aiMaybeChallenge(room, ai) {
+  if (room.phase !== PHASE.PLOTTING) return;
+  if (ai.M < 1) return;
+  if (Math.random() > 0.25) return;
+  const target = room.players.find(p => p.id !== ai.id && p.M >= 1);
+  if (!target) return;
+  if (canChallenge(room, ai.id, target.id)) setChallenge(room, ai.id, target.id);
+}
+
+function aiDoPlotting(room) {
+  room.players.forEach(p => {
+    if (!isAI(p)) return;
+    const actionCards = p.hand.filter(c => c.type === "ACTION");
+    const pick = actionCards[0] || p.hand[0];
+    if (pick) p.facedownId = pick.id;
+
+    const chosen = p.hand.find(c => c.id === p.facedownId);
+    p.declTag = aiChooseDeclTagFromCard(chosen);
+    p.declText = (p.declTag === "ATTACK") ? "我要搞人" :
+                 (p.declTag === "SUPPORT") ? "我要拉支持" :
+                 (p.declTag === "MONEY") ? "我要搞筹码" :
+                 (p.declTag === "ALLY") ? "我要谈联盟" :
+                 (p.declTag === "COUP") ? "我要搞大事" : "我有计划";
+  });
+
+  room.players.forEach(p => { if (isAI(p)) aiMaybeChallenge(room, p); });
+}
+
+function aiDoAction(room, ai) {
+  if (room.phase === PHASE.ACTION && isMyTurn(room, ai.id)) {
+    const chk = canLaunchCoup(room, ai);
+    if (chk.ok && Math.random() < 0.35) {
+      launchCoup(room, ai.id);
+      broadcastState(room);
+      return;
+    }
+
+    if (canPrepCoup(ai) && ai.M >= 1 && (ai.coupW || 0) < 3 && Math.random() < 0.25) {
+      prepCoup(room, ai.id);
+    }
+
+    const hasAllyCard = ai.hand.find(c => c.effectKey === "OFFER_ALLIANCE" && c.type === "ACTION");
+    if (!ai.allianceWith && hasAllyCard && Math.random() < 0.25) {
+      const targetId = aiPickTarget(room, ai.id);
+      performPlayCard(room, ai.id, hasAllyCard.id, targetId);
+      broadcastState(room);
+      return;
+    }
+
+    if (ai.facedownId) {
+      performPlayCard(room, ai.id, ai.facedownId, aiPickTarget(room, ai.id));
+      ai.facedownId = null;
+
+      if (room.phase === PHASE.REACTION && room.reactionContext?.type === "ALLIANCE_OFFER") {
+        broadcastState(room);
+        return;
+      }
+
+      room.phase = PHASE.REACTION;
+      room.phaseEndsAt = now() + 10000;
+      room.reactionContext = { type: "AFTER_ACTION", afterId: ai.id };
+      log(room, `⏱️ 反应窗口 10 秒：可打反应牌。`);
+      broadcastState(room);
+      return;
+    }
+
+    // 没牌也算“行动结束”
+    finishAction(room, ai.id);
+    return;
+  }
+}
+
+function aiDoReaction(room, ai) {
+  if (![PHASE.REACTION, PHASE.COUP_NEGOTIATION, PHASE.COUP_REACTION].includes(room.phase)) return;
+  if (!isAI(ai)) return;
+
+  if (room.coup && ai.id !== room.coup.leaderId) {
+    const blockCard = ai.hand.find(c =>
+      (room.coup.type === "VIOLENT" && c.effectKey === "REACT_BLOCK_VIOLENT") ||
+      (room.coup.type === "MILITARY" && c.effectKey === "REACT_BLOCK_MILITARY")
+    );
+    if (blockCard && Math.random() < 0.6) {
+      playReaction(room, ai.id, blockCard.id);
+      return;
+    }
+    if (ai.M >= 2 && Math.random() < 0.55) {
+      contributeToCoup(room, ai.id, Math.min(2, ai.M));
+      return;
+    }
+  }
+
+  if (room.allianceOffer && room.reactionContext?.type === "ALLIANCE_OFFER") {
+    if (room.allianceOffer.toId === ai.id) {
+      if (!ai.allianceWith && Math.random() < 0.5) {
+        acceptAlliance(room, ai.id);
+      }
+    }
+  }
+}
+
+function aiDoVote(room, ai) {
+  if (room.phase !== PHASE.VOTE) return;
+  if (room.votes.has(ai.id)) return;
+
+  const a = room.currentAgenda;
+  let v = "ABSTAIN";
+  if (a && a.id === "A2") v = "YES";
+  else if (a && a.id === "A4") v = "YES";
+  else v = (Math.random() < 0.45 ? "YES" : (Math.random() < 0.5 ? "NO" : "ABSTAIN"));
+
+  room.votes.set(ai.id, v);
+}
+
+function aiDoCrisis(room, ai) {
+  if (room.phase !== PHASE.CRISIS) return;
+  const need = room.currentAgenda?.crisisNeed || 0;
+  const curTotal = sumContrib(room.crisisContrib);
+  if (curTotal >= need) return;
+  if (ai.M <= 0) return;
+  if (Math.random() < 0.4) {
+    const amt = Math.min(1, ai.M);
+    ai.M -= amt;
+    room.crisisContrib.set(ai.id, (room.crisisContrib.get(ai.id) || 0) + amt);
+    log(room, `🧾 ${ai.name} 贡献 ${amt} 筹码应对危机。`);
+  }
 }
 
 function maybeRunAI(room) {
-  if (!room.started || room.phase === "end") return;
+  if (!room.started || room.phase === PHASE.END) return;
 
-  // 行动阶段：如果轮到 AI，自动走
-  if (room.phase === "action") {
-    const current = room.players[room.currentPlayerIdx];
-    if (current && current.kind === "ai") {
-      const a = aiChooseAction(room, current);
-      // 轻微延迟感更像“在线”
-      setTimeout(() => {
-        applyAction(room, current.id, a);
-      }, 400);
+  setTimeout(() => {
+    if (room.phase === PHASE.PLOTTING) {
+      aiDoPlotting(room);
+      broadcastState(room);
     }
+
+    if (room.phase === PHASE.ACTION) {
+      const cur = room.players[room.currentIdx];
+      if (cur && isAI(cur)) {
+        aiDoAction(room, cur);
+        broadcastState(room);
+      }
+    }
+
+    if ([PHASE.REACTION, PHASE.COUP_NEGOTIATION, PHASE.COUP_REACTION].includes(room.phase)) {
+      room.players.forEach(p => aiDoReaction(room, p));
+      broadcastState(room);
+    }
+
+    if (room.phase === PHASE.VOTE) {
+      room.players.forEach(p => { if (isAI(p)) aiDoVote(room, p); });
+      broadcastState(room);
+    }
+
+    if (room.phase === PHASE.CRISIS) {
+      room.players.forEach(p => { if (isAI(p)) aiDoCrisis(room, p); });
+      broadcastState(room);
+    }
+  }, 350);
+}
+
+/** -----------------------------
+ * Alliance accept
+ * ------------------------------ */
+function acceptAlliance(room, playerId) {
+  const offer = room.allianceOffer;
+  if (!offer) return { ok: false, err: "当前没有联盟提案" };
+  if (offer.toId !== playerId) return { ok: false, err: "你不是被提案者" };
+
+  const from = getPlayer(room, offer.fromId);
+  const to = getPlayer(room, offer.toId);
+  if (!from || !to) return { ok: false, err: "玩家不存在" };
+  if (from.allianceWith || to.allianceWith) return { ok: false, err: "双方之一已有联盟" };
+
+  from.allianceWith = to.id;
+  to.allianceWith = from.id;
+  log(room, `🤝 联盟成立：${from.name} ⇄ ${to.name}（共享红利/连坐伤害）`);
+
+  room.allianceOffer = null;
+  return { ok: true };
+}
+
+function cancelAllianceOffer(room) {
+  if (!room.allianceOffer) return;
+  const from = getPlayer(room, room.allianceOffer.fromId);
+  const to = getPlayer(room, room.allianceOffer.toId);
+  log(room, `🤝 联盟提案过期：${from?.name || "?"} → ${to?.name || "?"}`);
+  room.allianceOffer = null;
+}
+
+/** -----------------------------
+ * Player actions
+ * ------------------------------ */
+function performPlayCard(room, playerId, cardId, targetId = null) {
+  const p = getPlayer(room, playerId);
+  if (!p) return { ok: false, err: "玩家不存在" };
+
+  const card = removeCardFromHand(p, cardId);
+  if (!card) return { ok: false, err: "手牌不存在" };
+  if (card.type !== "ACTION") {
+    p.hand.push(card);
+    return { ok: false, err: "这不是行动牌" };
   }
 
-  // 暗线阶段：如果轮到 AI 暗线，自动走
-  if (room.phase === "shadow" && room.shadowQueue && room.shadowQueue.length > 0) {
-    const nextId = room.shadowQueue[0];
-    const p = getPlayer(room, nextId);
-    if (p && p.kind === "ai") {
-      const s = aiMaybeUseShadow(room, p);
-      setTimeout(() => {
-        applyShadow(room, p.id, s);
-      }, 400);
+  log(room, `▶️ ${p.name} 打出「${card.name}」`);
+  const actualTag = resolveActionCard(room, playerId, card, targetId);
+
+  resolveChallengeIfAny(room, playerId, actualTag);
+
+  if (checkWin(room)) return { ok: true };
+
+  if (room.phase === PHASE.REACTION && room.reactionContext?.type === "ALLIANCE_OFFER") {
+    return { ok: true, holdTurn: true };
+  }
+
+  return { ok: true };
+}
+
+function playerAction(room, playerId, action, payload) {
+  if (!room.started) return { ok: false, err: "游戏未开始" };
+
+  if (room.phase !== PHASE.ACTION) return { ok: false, err: "当前不是行动阶段" };
+  if (!isMyTurn(room, playerId)) return { ok: false, err: "还没轮到你" };
+
+  const actor = getPlayer(room, playerId);
+  if (!actor) return { ok: false, err: "玩家不存在" };
+
+  if (action === "PLAY_FACEDOWN") {
+    if (!actor.facedownId) return { ok: false, err: "你没有暗置牌" };
+    const targetId = payload?.targetId || null;
+    const res = performPlayCard(room, playerId, actor.facedownId, targetId);
+    actor.facedownId = null;
+
+    if (res.ok && !res.holdTurn) {
+      room.phase = PHASE.REACTION;
+      room.phaseEndsAt = now() + 10000;
+      room.reactionContext = { type: "AFTER_ACTION", afterId: playerId };
+      log(room, `⏱️ 反应窗口 10 秒：可打反应牌。`);
+      return { ok: true };
+    }
+    return res;
+  }
+
+  if (action === "PREP_COUP") {
+    const r = prepCoup(room, playerId);
+    if (!r.ok) return r;
+
+    room.phase = PHASE.REACTION;
+    room.phaseEndsAt = now() + 8000;
+    room.reactionContext = { type: "AFTER_ACTION", afterId: playerId };
+    log(room, `⏱️ 反应窗口 8 秒：可打反应牌。`);
+    return { ok: true };
+  }
+
+  if (action === "LAUNCH_COUP") {
+    const r = launchCoup(room, playerId);
+    if (!r.ok) return r;
+    return { ok: true };
+  }
+
+  if (action === "BREAK_ALLIANCE") {
+    const allyId = actor.allianceWith;
+    if (!allyId) return { ok: false, err: "你没有盟友" };
+    const ally = getPlayer(room, allyId);
+    if (ally) ally.allianceWith = null;
+    actor.allianceWith = null;
+    log(room, `💥 ${actor.name} 单方面断盟。`);
+
+    room.phase = PHASE.REACTION;
+    room.phaseEndsAt = now() + 8000;
+    room.reactionContext = { type: "AFTER_ACTION", afterId: playerId };
+    return { ok: true };
+  }
+
+  return { ok: false, err: "未知行动" };
+}
+
+/** -----------------------------
+ * Timers / phase transitions
+ * ------------------------------ */
+function tickRooms() {
+  const t = now();
+  for (const room of rooms.values()) {
+    if (!room.started) continue;
+    if (room.phase === PHASE.END) continue;
+
+    // 政变到点
+    if (room.coup && t >= room.coup.endsAt) {
+      finalizeCoup(room);
+      continue;
+    }
+
+    // 联盟提案到点（如果正在等联盟 REACTION，直接结算提案者行动结束）
+    if (room.allianceOffer && t >= room.allianceOffer.expiresAt) {
+      if (room.phase === PHASE.REACTION && room.reactionContext?.type === "ALLIANCE_OFFER") {
+        const actorId = room.reactionContext.fromId;
+        cancelAllianceOffer(room);
+        room.reactionContext = null;
+        finishAction(room, actorId);
+        continue;
+      } else {
+        cancelAllianceOffer(room);
+      }
+    }
+
+    if (!room.phaseEndsAt) continue;
+    if (t < room.phaseEndsAt) continue;
+
+    // phase timeout transitions
+    if (room.phase === PHASE.PLOTTING) {
+      moveToActionPhase(room);
+      continue;
+    }
+
+    if (room.phase === PHASE.REACTION) {
+      if (room.reactionContext?.type === "ALLIANCE_OFFER") {
+        const actorId = room.reactionContext.fromId;
+        cancelAllianceOffer(room);
+        room.reactionContext = null;
+        finishAction(room, actorId);
+        continue;
+      }
+
+      if (room.reactionContext?.type === "AFTER_ACTION") {
+        const actorId = room.reactionContext.afterId;
+        room.reactionContext = null;
+        finishAction(room, actorId);
+        continue;
+      }
+    }
+
+    if (room.phase === PHASE.VOTE) {
+      resolveVote(room);
+      moveToCrisis(room);
+      continue;
+    }
+
+    if (room.phase === PHASE.CRISIS) {
+      resolveCrisis(room);
+      cleanupAndMaybeAdvance(room);
+      continue;
     }
   }
 }
 
+setInterval(tickRooms, 250);
+
 /** -----------------------------
- *  WebSocket protocol
+ * WebSocket protocol
  * ------------------------------ */
+function addHuman(room, ws, name) {
+  const id = `H${now()}_${Math.random().toString(16).slice(2, 6)}`;
+  room.players.push({
+    id, name: name.slice(0, 18), kind: "human", ws,
+    hand: [],
+    role: ROLE.NORMAL,
+  });
+  return id;
+}
+
+function addAI(room) {
+  const id = `A${now()}_${Math.random().toString(16).slice(2, 6)}`;
+  room.players.push({
+    id, name: `AI_${room.players.length + 1}`, kind: "ai",
+    ws: null,
+    hand: [],
+    role: ROLE.NORMAL,
+  });
+  return id;
+}
+
 wss.on("connection", (ws) => {
   ws.on("message", (raw) => {
     let data;
@@ -725,50 +1539,165 @@ wss.on("connection", (ws) => {
 
     if (type === "join") {
       const room = getRoom(roomId);
-      const name = (data.name || "玩家").slice(0, 20);
+      const name = (data.name || "玩家").trim();
+
+      const humanCount = room.players.filter(isHuman).length;
+      if (humanCount >= 2) {
+        safeSend(ws, { type: "error", message: "房间已满（最多2名真人）" });
+        return;
+      }
 
       const pid = addHuman(room, ws, name);
       ws._roomId = roomId;
       ws._playerId = pid;
 
-      room.log.push(`👤 ${name} 加入房间。`);
-
+      log(room, `👤 ${name} 加入房间。`);
       safeSend(ws, { type: "joined", playerId: pid, state: publicState(room) });
       safeSend(ws, { type: "private", state: privateState(room, pid) });
-
       broadcastState(room);
       return;
     }
 
     if (type === "add_ai") {
       const room = getRoom(roomId);
-      if (room.started) return;
-      const n = clamp(Number(data.count || 1), 1, 6);
-      for (let i = 0; i < n; i++) addAI(room, `AI_${room.players.length + 1}`);
-      room.log.push(`🤖 添加 AI x${n}`);
+      if (room.started) { safeSend(ws, { type: "error", message: "游戏已开始，不能加AI" }); return; }
+      const count = clamp(Number(data.count || 1), 1, 3);
+      for (let i = 0; i < count; i++) addAI(room);
+      log(room, `🤖 添加 AI x${count}`);
       broadcastState(room);
       return;
     }
 
     if (type === "start") {
       const room = getRoom(roomId);
+      if (room.started) return;
+      if (room.players.length < 2) { safeSend(ws, { type: "error", message: "至少需要2名玩家（可加AI）" }); return; }
       startGame(room);
+      return;
+    }
+
+    if (type === "plot_set_facedown") {
+      const room = getRoom(roomId);
+      const pid = ws._playerId;
+      const p = getPlayer(room, pid);
+      if (!room.started || room.phase !== PHASE.PLOTTING) { safeSend(ws, { type: "error", message: "当前不是密谋阶段" }); return; }
+      if (!p) return;
+      const cardId = data.cardId;
+      if (!p.hand.find(c => c.id === cardId)) { safeSend(ws, { type: "error", message: "你没有这张牌" }); return; }
+      p.facedownId = cardId;
+      broadcastState(room);
+      return;
+    }
+
+    if (type === "plot_set_declaration") {
+      const room = getRoom(roomId);
+      const pid = ws._playerId;
+      const p = getPlayer(room, pid);
+      if (!room.started || room.phase !== PHASE.PLOTTING) { safeSend(ws, { type: "error", message: "当前不是密谋阶段" }); return; }
+      if (!p) return;
+      const tag = String(data.tag || "BLUFF");
+      const okTag = DECL_TAGS.some(x => x.key === tag) ? tag : "BLUFF";
+      p.declTag = okTag;
+      p.declText = String(data.text || "").slice(0, 60);
+      log(room, `📝 ${p.name} 声明：${okTag}${p.declText ? " - " + p.declText : ""}`);
+      broadcastState(room);
+      return;
+    }
+
+    if (type === "challenge") {
+      const room = getRoom(roomId);
+      const pid = ws._playerId;
+      if (!room.started || room.phase !== PHASE.PLOTTING) { safeSend(ws, { type: "error", message: "质疑只能在密谋阶段发起" }); return; }
+      const targetId = data.targetId;
+      if (!canChallenge(room, pid, targetId)) { safeSend(ws, { type: "error", message: "无法质疑（筹码不足/重复质疑/目标不合法）" }); return; }
+      setChallenge(room, pid, targetId);
+      broadcastState(room);
       return;
     }
 
     if (type === "action") {
       const room = getRoom(roomId);
       const pid = ws._playerId;
-      const res = applyAction(room, pid, data.actionKey, data.payload || {});
+      const res = playerAction(room, pid, data.actionKey, data.payload || {});
       if (!res.ok) safeSend(ws, { type: "error", message: res.err });
+      broadcastState(room);
+      maybeRunAI(room);
       return;
     }
 
-    if (type === "shadow") {
+    if (type === "vote") {
       const room = getRoom(roomId);
       const pid = ws._playerId;
-      const res = applyShadow(room, pid, data.skillKey);
+      if (!room.started || room.phase !== PHASE.VOTE) { safeSend(ws, { type: "error", message: "当前不是投票阶段" }); return; }
+      const choice = String(data.choice || "ABSTAIN");
+      const v = ["YES", "NO", "ABSTAIN"].includes(choice) ? choice : "ABSTAIN";
+      room.votes.set(pid, v);
+      log(room, `🗳️ ${getPlayer(room, pid)?.name || "玩家"} 投票：${v}`);
+      broadcastState(room);
+      return;
+    }
+
+    if (type === "crisis_contribute") {
+      const room = getRoom(roomId);
+      const pid = ws._playerId;
+      if (!room.started || room.phase !== PHASE.CRISIS) { safeSend(ws, { type: "error", message: "当前不是危机阶段" }); return; }
+      const p = getPlayer(room, pid);
+      if (!p) return;
+      const amt = clamp(Number(data.amount || 0), 0, 10);
+      if (amt <= 0) { safeSend(ws, { type: "error", message: "贡献必须>0" }); return; }
+      if (p.M < amt) { safeSend(ws, { type: "error", message: "筹码不足" }); return; }
+      p.M -= amt;
+      room.crisisContrib.set(pid, (room.crisisContrib.get(pid) || 0) + amt);
+      log(room, `🧾 ${p.name} 贡献 ${amt} 筹码应对危机。`);
+      broadcastState(room);
+      return;
+    }
+
+    if (type === "coup_contribute") {
+      const room = getRoom(roomId);
+      const pid = ws._playerId;
+      if (!room.started || ![PHASE.COUP_NEGOTIATION, PHASE.COUP_REACTION].includes(room.phase)) {
+        safeSend(ws, { type: "error", message: "当前不是政变阻止阶段" }); return;
+      }
+      const res = contributeToCoup(room, pid, data.amount);
       if (!res.ok) safeSend(ws, { type: "error", message: res.err });
+      broadcastState(room);
+      maybeRunAI(room);
+      return;
+    }
+
+    if (type === "reaction") {
+      const room = getRoom(roomId);
+      const pid = ws._playerId;
+      const res = playReaction(room, pid, data.cardId);
+      if (!res.ok) safeSend(ws, { type: "error", message: res.err });
+      broadcastState(room);
+      maybeRunAI(room);
+      return;
+    }
+
+    if (type === "accept_alliance") {
+      const room = getRoom(roomId);
+      const pid = ws._playerId;
+      if (!room.started || room.phase !== PHASE.REACTION || !room.allianceOffer) {
+        safeSend(ws, { type: "error", message: "当前没有可接受的联盟提案" }); return;
+      }
+      const res = acceptAlliance(room, pid);
+      if (!res.ok) {
+        safeSend(ws, { type: "error", message: res.err });
+        broadcastState(room);
+        return;
+      }
+
+      // 接受后：结算“提案者”的行动结束，轮到下一个未行动者
+      if (room.reactionContext?.type === "ALLIANCE_OFFER") {
+        const actorId = room.reactionContext.fromId;
+        room.reactionContext = null;
+        finishAction(room, actorId);
+        return; // finishAction 已广播
+      }
+
+      broadcastState(room);
       return;
     }
 
@@ -778,7 +1707,7 @@ wss.on("connection", (ws) => {
       const p = getPlayer(room, pid);
       if (!p) return;
       const text = String(data.text || "").slice(0, 200);
-      room.log.push(`💬 ${p.name}: ${text}`);
+      log(room, `💬 ${p.name}: ${text}`);
       broadcastState(room);
       return;
     }
@@ -797,16 +1726,20 @@ wss.on("connection", (ws) => {
     if (!roomId || !pid) return;
     const room = rooms.get(roomId);
     if (!room) return;
+
     const idx = room.players.findIndex(p => p.id === pid);
     if (idx >= 0) {
       const name = room.players[idx].name;
       room.players.splice(idx, 1);
-      room.log.push(`👋 ${name} 断开连接。`);
-      // 若房间空了，清理
-      if (room.players.length === 0) rooms.delete(roomId);
-      else broadcastState(room);
+      log(room, `👋 ${name} 断开连接。`);
+
+      if (room.players.length === 0) {
+        rooms.delete(roomId);
+      } else {
+        endGame(room, "对局终止", "有人离开房间。");
+      }
     }
   });
 });
 
-console.log("✅ 空壳之国服务器已启动：ws://localhost:3000");
+console.log(`✅ Server running on ws://localhost:${PORT}`);
