@@ -1,0 +1,43 @@
+# Simple workflow for deploying static content to GitHub Pages# 将静态内容部署到 GitHub Pages 的简单工作流
+name: Deploy static content to Pages名称: 将静态内容部署到 Pages
+
+on:
+  # Runs on pushes targeting the default branch# 在推送到默认分支时运行
+  push:推送:
+    branches: ["main"“main”]
+
+  # Allows you to run this workflow manually from the Actions tab# 允许您从“操作”选项卡手动运行此工作流
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages# 将 GITHUB_TOKEN 的权限设置为允许部署到 GitHub Pages# 将 GITHUB_TOKEN 的权限设置为允许部署到 GitHub Pages# 将 GITHUB_TOKEN 的权限设置为允许部署到 GitHub Pages
+permissions:权限:权限:权限:
+  contents: read内容: 读取内容: 读取内容: 读取
+  pages: write页面: 写入页面: 写入页面: 写入
+  id-token: write身份令牌: 写入身份令牌: 写入身份令牌: 写入
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.# 仅允许一次并发部署，跳过正在进行的部署与最新排队之间已有的排队运行。
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.# 但请勿取消正在进行的部署，因为我们希望这些生产部署能够顺利完成。
+concurrency:并发:
+  group: "pages"组: “页面”
+  cancel-in-progress: false取消中: false
+
+jobs:作业:
+  # Single deploy job since we're just deploying# 单次部署作业，因为我们只是在部署
+  deploy:部署:
+    environment:环境:
+      name: github-pages名称: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest运行于: ubuntu-latest
+    steps:步骤:
+      - name: Checkout      - 名称: 结账
+        uses: actions/checkout@v4使用: actions/checkout@v4
+      - name: Setup Pages      - 名称: 设置页面
+        uses: actions/configure-pages@v5
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Upload entire repository
+          path: '.'
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
