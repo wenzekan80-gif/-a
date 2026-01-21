@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>空壳之国 · 在线原型</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 16px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 12px; max-width: 560px; }
+    button { padding: 8px 10px; border-radius: 10px; border: 1px solid #ccc; background: #fafafa; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    input { padding: 8px; border-radius: 10px; border: 1px solid #ccc; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .small { font-size: 12px; color: #666; }
+    .log { height: 280px; overflow: auto; background: #fcfcfc; }
+    .pill { display:inline-block; padding: 2px 8px; border-radius: 999px; border:1px solid #ddd; margin-right: 6px;}
+    .warn { color: #b00; }
+  </style>
+</head>
+<body>
+  <h2>《空壳之国》在线原型</h2>
+  <div class="card">
+    <div class="row">
+      <input id="wsUrl" style="min-width:260px" value="ws://localhost:3000" />
+      <input id="roomId" placeholder="房间号（随便填）" />
+      <input id="name" placeholder="你的名字" />
+      <button id="btnJoin">加入</button>
+    </div>
+    <div class="small">要发群里线上玩：把 ws 地址改成你部署后的地址（例如 wss://xxx.onrender.com）。</div>
+  </div>
+
+  <div class="row" style="margin-top:12px">
+    <div class="card" style="flex:1; min-width: 360px;">
+      <h3>公共局势</h3>
+      <div id="publicState" class="mono"></div>
+      <div id="eventBox" class="small"></div>
+      <div style="margin-top:10px" class="row">
+        <button id="btnAddAI1">+AI x1</button>
+        <button id="btnAddAI2">+AI x2</button>
+        <button id="btnStart">开始游戏</button>
+        <span id="err" class="warn"></span>
+      </div>
+
+      <h3 style="margin-top:14px">行动（轮到你才能点）</h3>
+      <div id="actions" class="row"></div>
+
+      <h3 style="margin-top:14px">暗线（shadow 阶段）</h3>
+      <div class="row">
+        <button id="btnShadowSkip">不发动</button>
+        <button id="btnShadowPop">民粹强人：夺取议程</button>
+        <button id="btnShadowAut">独裁强人：冻结机构</button>
+      </div>
+      <div class="small">提示：暗线技能每局一次；会增加暴露度。</div>
+    </div>
+
+    <div class="card" style="flex:1; min-width: 360px;">
+      <h3>你的私密信息</h3>
+      <div id="privateState" class="mono"></div>
+      <div class="small">阵营是明牌；身份（强人/普通）只有你自己能看到。</div>
+
+      <h3 style="margin-top:14px">聊天 / 群聊味道</h3>
+      <div class="row">
+        <input id="chatText" style="flex:1; min-width:220px" placeholder="发点吐槽/站队/阴阳怪气都行" />
+        <button id="btnChat">发送</button>
+      </div>
+      <div id="log" class="card log mono" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+<script>
+let ws, myPlayerId = null, currentRoom = null;
+let lastPublic = null, lastPrivate = null;
+
+const ACTIONS = [
+  { key: "mobilize_unify", label: "动员·团结", tip: "+L，花R1" },
+  { key: "mobilize_divide", label: "动员·煽动", tip: "+C -L，花R1（更像民粹）" },
+  { key: "infiltrate", label: "渗透机构", tip: "+C++ -L，花R2（前政党更便宜）" },
+  { key: "agenda", label: "推动议程", tip: "推进胜利进度，花R2" },
+  { key: "investigate", label: "调查/爆料", tip: "抬对手暴露/削资源，花R1" },
+  { key: "foreign_ops", label: "对外操作", tip: "+E++ -L -P，花R1（境外更强）" },
+  { key: "trade", label: "政策交易", tip: "+R1 -L1（暗箱操作）" },
+];
+
+function el(id){ return document.getElementById(id); }
+function setErr(t){ el("err").innerText = t || ""; }
+
+function connectAndJoin() {
+  setErr("");
+  const url = el("wsUrl").value.trim();
+  const roomId = el("roomId").value.trim() || "room";
+  const name = el("name").value.trim() || "玩家";
+  currentRoom = roomId;
+
+  ws = new WebSocket(url);
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type:"join", roomId, name }));
+  };
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === "joined") {
+      myPlayerId = msg.playerId;
+      renderPublic(msg.state);
+      buildActions();
+      pingPrivate();
+    }
+    if (msg.type === "state") renderPublic(msg.state);
+    if (msg.type === "private") renderPrivate(msg.state);
+    if (msg.type === "error") setErr(msg.message);
+  };
+  ws.onclose = () => setErr("连接断开（刷新重连）");
+}
+
+function pingPrivate(){
+  if (!ws || ws.readyState !== 1) return;
+  ws.send(JSON.stringify({ type:"ping_state", roomId: currentRoom }));
+}
+
+function send(type, payload){
+  if (!ws || ws.readyState !== 1) return setErr("未连接");
+  ws.send(JSON.stringify({ type, roomId: currentRoom, ...payload }));
+}
+
+function renderPublic(state){
+  lastPublic = state;
+  const s = state;
+  const meTurn = s.players[s.currentPlayerIdx]?.id === myPlayerId;
+  const lines = [];
+  lines.push(`回合: ${s.turn}/${8}  阶段: ${s.phase}  当前行动者: ${s.players[s.currentPlayerIdx]?.name || "-"}`);
+  lines.push(`L(合法性): ${s.L}   C(控制力): ${s.C}   P(繁荣): ${s.P}   E(外部影响): ${s.E}   危机层数: ${s.crisis}`);
+  if (s.winner) lines.push(`🏁 胜利方: ${s.winner}  |  结局: ${s.ending}`);
+  el("publicState").innerText = lines.join("\n");
+
+  // 事件
+  if (s.eventTop) {
+    el("eventBox").innerText = `📰 事件：${s.eventTop.name} —— ${s.eventTop.text}（影响：${JSON.stringify(s.eventTop.effects)}）`;
+  } else {
+    el("eventBox").innerText = "";
+  }
+
+  // 玩家列表
+  const plist = s.players.map((p, idx) => {
+    const tag = idx === s.currentPlayerIdx ? "▶" : " ";
+    return `${tag} ${p.name} [${p.kind}] 阵营:${p.faction} R:${p.R} 议程:${p.agenda} 暴露:${p.exposure}${p.usedSecret ? "（已用暗线）" : ""}`;
+  }).join("\n");
+  el("publicState").innerText += "\n\n" + plist;
+
+  // 日志
+  el("log").innerText = s.log.join("\n");
+  el("log").scrollTop = el("log").scrollHeight;
+
+  // 按钮可用性
+  for (const btn of document.querySelectorAll("[data-action]")) {
+    btn.disabled = !(s.started && s.phase === "action" && meTurn && !s.winner);
+  }
+  el("btnStart").disabled = s.started || s.players.length < 2;
+  el("btnAddAI1").disabled = s.started;
+  el("btnAddAI2").disabled = s.started;
+
+  // 暗线按钮
+  const myShadowTurn = (s.phase === "shadow" && !s.winner && shadowWhoseTurnIsMine());
+  el("btnShadowSkip").disabled = !myShadowTurn;
+  el("btnShadowPop").disabled = !myShadowTurn;
+  el("btnShadowAut").disabled = !myShadowTurn;
+}
+
+function shadowWhoseTurnIsMine(){
+  // 前端不知道 shadowQueue，只能用私密信息提示+轮转体验
+  // 这里用“当前行动者”不准确，所以简化：允许你点，后端会判断并报错
+  return true;
+}
+
+function renderPrivate(pstate){
+  lastPrivate = pstate;
+  if (!pstate || !pstate.me) return;
+  const me = pstate.me;
+  el("privateState").innerText =
+`你是：${me.name}
+阵营（明牌）：${me.faction}
+身份（暗牌）：${me.role}
+暗线技能：${me.secretSkill?.name || "无"} - ${me.secretSkill?.desc || ""}
+资源R：${me.R}   议程：${me.agenda}   暴露度：${me.exposure}
+暗线使用：${me.usedSecret ? "已用" : "未用"}`
+}
+
+function buildActions(){
+  const box = el("actions");
+  box.innerHTML = "";
+  for (const a of ACTIONS){
+    const b = document.createElement("button");
+    b.innerHTML = `<div>${a.label}</div><div class="small">${a.tip}</div>`;
+    b.dataset.action = a.key;
+    b.onclick = () => send("action", { actionKey: a.key });
+    box.appendChild(b);
+  }
+}
+
+el("btnJoin").onclick = connectAndJoin;
+el("btnAddAI1").onclick = () => send("add_ai", { count: 1 });
+el("btnAddAI2").onclick = () => send("add_ai", { count: 2 });
+el("btnStart").onclick = () => send("start", {});
+el("btnChat").onclick = () => {
+  const t = el("chatText").value.trim();
+  if (!t) return;
+  send("chat", { text: t });
+  el("chatText").value = "";
+};
+
+// 暗线
+el("btnShadowSkip").onclick = () => send("shadow", { skillKey: "skip" });
+el("btnShadowPop").onclick = () => send("shadow", { skillKey: "populist_overdrive" });
+el("btnShadowAut").onclick = () => send("shadow", { skillKey: "autocrat_freeze" });
+
+</script>
+</body>
+</html>
