@@ -1,216 +1,648 @@
 <!doctype html>
-<html lang="zh">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>空壳之国 · 在线原型</title>
+  <title>空壳之国（轻量互动版）</title>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 16px; }
-    .row { display: flex; gap: 12px; flex-wrap: wrap; }
-    .card { border: 1px solid #ddd; border-radius: 10px; padding: 12px; max-width: 560px; }
-    button { padding: 8px 10px; border-radius: 10px; border: 1px solid #ccc; background: #fafafa; cursor: pointer; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-    input { padding: 8px; border-radius: 10px; border: 1px solid #ccc; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    .small { font-size: 12px; color: #666; }
-    .log { height: 280px; overflow: auto; background: #fcfcfc; }
-    .pill { display:inline-block; padding: 2px 8px; border-radius: 999px; border:1px solid #ddd; margin-right: 6px;}
-    .warn { color: #b00; }
+    :root { --bg:#0b0f14; --card:#121a24; --muted:#7c8aa5; --fg:#eaf1ff; --bd:#223146; --ok:#39d98a; --warn:#ffb020; --bad:#ff5d5d; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "PingFang SC", "Microsoft YaHei", Arial; background:var(--bg); color:var(--fg); }
+    header { padding:14px 16px; border-bottom:1px solid var(--bd); display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+    header .title { font-weight:700; letter-spacing:.5px; }
+    header .pill { padding:6px 10px; border:1px solid var(--bd); border-radius:999px; color:var(--muted); font-size:12px; }
+    main { padding:14px 16px; display:grid; gap:14px; grid-template-columns: 360px 1fr; }
+    @media (max-width: 980px){ main{ grid-template-columns:1fr; } }
+
+    .panel { background:var(--card); border:1px solid var(--bd); border-radius:14px; padding:12px; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .col { display:flex; flex-direction:column; gap:8px; }
+    label { font-size:12px; color:var(--muted); }
+    input, select, textarea {
+      background:#0d141d; border:1px solid var(--bd); color:var(--fg);
+      padding:10px 10px; border-radius:10px; outline:none;
+    }
+    textarea { min-height:64px; resize:vertical; }
+    button {
+      background:#0d141d; border:1px solid var(--bd); color:var(--fg);
+      padding:10px 12px; border-radius:10px; cursor:pointer;
+    }
+    button:hover { border-color:#38547a; }
+    button.primary { background:#18263a; border-color:#365a86; }
+    button.ok { border-color:rgba(57,217,138,.55); }
+    button.warn { border-color:rgba(255,176,32,.55); }
+    button.bad { border-color:rgba(255,93,93,.55); }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    .small { font-size:12px; color:var(--muted); }
+    .big { font-size:16px; font-weight:650; }
+
+    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .players { display:flex; flex-direction:column; gap:8px; }
+    .p {
+      border:1px solid var(--bd); border-radius:12px; padding:10px;
+      display:flex; justify-content:space-between; gap:10px;
+    }
+    .p .name { font-weight:650; }
+    .p .meta { font-size:12px; color:var(--muted); }
+    .p.you { border-color:#4a78b5; }
+    .p.turn { outline:2px solid rgba(255,176,32,.22); }
+    .p .stats { display:flex; gap:8px; font-size:12px; }
+    .stat { padding:4px 8px; border:1px solid var(--bd); border-radius:999px; }
+    .tag { padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid var(--bd); color:var(--muted); }
+
+    .hand { display:flex; flex-direction:column; gap:8px; }
+    .card {
+      border:1px solid var(--bd); border-radius:12px; padding:10px;
+      display:flex; justify-content:space-between; gap:10px;
+    }
+    .card .left { display:flex; flex-direction:column; gap:4px; }
+    .card .right { display:flex; gap:8px; align-items:center; }
+    .card .title { font-weight:650; }
+    .card .desc { font-size:12px; color:var(--muted); line-height:1.35; }
+    .card .badge { font-size:12px; padding:2px 8px; border-radius:999px; border:1px solid var(--bd); color:var(--muted); }
+    .card.facedown { border-color:rgba(74,120,181,.65); }
+
+    .log { height:520px; overflow:auto; padding-right:6px; display:flex; flex-direction:column; gap:6px; }
+    .line { font-size:12px; color:#d6e3ff; opacity:.92; line-height:1.35; }
+    .line.dim { color:var(--muted); }
+
+    .sep { height:1px; background:var(--bd); margin:10px 0; }
+    .timer { font-size:12px; color:var(--muted); }
+    .kpi { display:flex; gap:10px; flex-wrap:wrap; }
+    .kpi .box { border:1px solid var(--bd); border-radius:12px; padding:8px 10px; }
+    .kpi .box .v { font-weight:700; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
   </style>
 </head>
 <body>
-  <h2>《空壳之国》在线原型</h2>
-  <div class="card">
+<header>
+  <div class="title">空壳之国（轻量互动版）</div>
+  <div class="pill" id="connPill">未连接</div>
+  <div class="pill">Phase: <span id="phaseText">-</span></div>
+  <div class="pill">Turn: <span id="turnText">-</span></div>
+  <div class="pill">总统: <span id="presText">-</span></div>
+  <div class="pill">当前: <span id="curText">-</span></div>
+  <div class="pill timer">倒计时: <span id="timerText">-</span></div>
+</header>
+
+<main>
+  <!-- 左侧：控制 & 个人信息 -->
+  <section class="panel col">
+    <div class="big">连接/房间</div>
+    <div class="grid2">
+      <div class="col">
+        <label>WS 地址</label>
+        <input id="wsUrl" value="ws://localhost:3000" />
+      </div>
+      <div class="col">
+        <label>房间号</label>
+        <input id="roomId" value="room1" />
+      </div>
+      <div class="col">
+        <label>昵称</label>
+        <input id="name" value="玩家" />
+      </div>
+      <div class="col">
+        <label>AI 数量（1~3）</label>
+        <input id="aiCount" type="number" min="1" max="3" value="1" />
+      </div>
+    </div>
     <div class="row">
-      <input id="wsUrl" style="min-width:260px" value="ws://localhost:3000" />
-      <input id="roomId" placeholder="房间号（随便填）" />
-      <input id="name" placeholder="你的名字" />
-      <button id="btnJoin">加入</button>
+      <button class="primary" id="btnConnect">连接</button>
+      <button id="btnJoin">加入房间</button>
+      <button id="btnAddAI">加 AI</button>
+      <button class="ok" id="btnStart">开始</button>
+      <button class="bad" id="btnDisconnect">断开</button>
     </div>
-    <div class="small">要发群里线上玩：把 ws 地址改成你部署后的地址（例如 wss://xxx.onrender.com）。</div>
-  </div>
+    <div class="small">你的 PlayerId：<span class="mono" id="pidText">-</span></div>
 
-  <div class="row" style="margin-top:12px">
-    <div class="card" style="flex:1; min-width: 360px;">
-      <h3>公共局势</h3>
-      <div id="publicState" class="mono"></div>
-      <div id="eventBox" class="small"></div>
-      <div style="margin-top:10px" class="row">
-        <button id="btnAddAI1">+AI x1</button>
-        <button id="btnAddAI2">+AI x2</button>
-        <button id="btnStart">开始游戏</button>
-        <span id="err" class="warn"></span>
+    <div class="sep"></div>
+
+    <div class="big">你（私密）</div>
+    <div class="kpi">
+      <div class="box"><div class="small">角色</div><div class="v" id="myRole">-</div></div>
+      <div class="box"><div class="small">支持 S</div><div class="v" id="myS">-</div></div>
+      <div class="box"><div class="small">稳定 T</div><div class="v" id="myT">-</div></div>
+      <div class="box"><div class="small">筹码 M</div><div class="v" id="myM">-</div></div>
+      <div class="box"><div class="small">不可信</div><div class="v" id="myU">-</div></div>
+      <div class="box"><div class="small">政变威胁 W</div><div class="v" id="myW">-</div></div>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="big">阶段操作</div>
+
+    <div class="col">
+      <label>密谋：选择暗置牌</label>
+      <select id="selFacedown"></select>
+      <button id="btnSetFacedown">设为暗置</button>
+    </div>
+
+    <div class="grid2">
+      <div class="col">
+        <label>声明标签</label>
+        <select id="selDecl">
+          <option value="SUPPORT">SUPPORT 拉支持</option>
+          <option value="ATTACK">ATTACK 搞对手</option>
+          <option value="MONEY">MONEY 搞筹码</option>
+          <option value="ALLY">ALLY 结盟/断盟</option>
+          <option value="COUP">COUP 准备/发动政变</option>
+          <option value="VOTE">VOTE 冲议题投票</option>
+          <option value="BLUFF">BLUFF 打烟雾弹</option>
+        </select>
       </div>
+      <div class="col">
+        <label>声明补充（<=60字）</label>
+        <input id="declText" placeholder="可不填" maxlength="60" />
+      </div>
+    </div>
+    <button id="btnSetDecl">提交声明</button>
 
-      <h3 style="margin-top:14px">行动（轮到你才能点）</h3>
-      <div id="actions" class="row"></div>
+    <div class="sep"></div>
 
-      <h3 style="margin-top:14px">暗线（shadow 阶段）</h3>
+    <div class="grid2">
+      <div class="col">
+        <label>目标玩家（打牌/质疑）</label>
+        <select id="selTarget"></select>
+      </div>
+      <div class="col">
+        <label>金额（危机/阻止政变）</label>
+        <input id="amt" type="number" min="1" max="10" value="1" />
+      </div>
+    </div>
+
+    <div class="row">
+      <button class="primary" id="btnPlayFacedown">行动：打出暗置牌</button>
+      <button class="warn" id="btnPrepCoup">行动：预备政变</button>
+      <button class="bad" id="btnLaunchCoup">行动：发动政变</button>
+      <button id="btnBreakAlliance">行动：断盟</button>
+    </div>
+
+    <div class="row">
+      <button id="btnChallenge">密谋：质疑目标</button>
+      <button id="btnAcceptAlliance">反应：接受联盟</button>
+    </div>
+
+    <div class="row">
+      <button id="btnVoteYes">投票：YES</button>
+      <button id="btnVoteNo">投票：NO</button>
+      <button id="btnVoteAbstain">投票：ABSTAIN</button>
+    </div>
+
+    <div class="row">
+      <button id="btnCrisisPay">危机：贡献筹码</button>
+      <button id="btnCoupPay">阻止政变：贡献筹码</button>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="big">聊天</div>
+    <div class="row">
+      <input id="chatText" placeholder="回车发送" style="flex:1" />
+      <button id="btnChat">发送</button>
+    </div>
+
+    <div class="small">提示：若你改了后端端口/地址，记得改 WS 地址。</div>
+  </section>
+
+  <!-- 右侧：公共状态 / 手牌 / 日志 -->
+  <section class="panel col">
+    <div class="row" style="justify-content:space-between; align-items:flex-end;">
+      <div class="col" style="gap:4px;">
+        <div class="big">公共状态</div>
+        <div class="small" id="agendaText">议题：-</div>
+        <div class="small" id="coupText">政变：-</div>
+        <div class="small" id="offerText">联盟提案：-</div>
+      </div>
       <div class="row">
-        <button id="btnShadowSkip">不发动</button>
-        <button id="btnShadowPop">民粹强人：夺取议程</button>
-        <button id="btnShadowAut">独裁强人：冻结机构</button>
+        <button id="btnPing">刷新</button>
+        <button id="btnClearLog">清空日志</button>
       </div>
-      <div class="small">提示：暗线技能每局一次；会增加暴露度。</div>
     </div>
 
-    <div class="card" style="flex:1; min-width: 360px;">
-      <h3>你的私密信息</h3>
-      <div id="privateState" class="mono"></div>
-      <div class="small">阵营是明牌；身份（强人/普通）只有你自己能看到。</div>
+    <div class="sep"></div>
 
-      <h3 style="margin-top:14px">聊天 / 群聊味道</h3>
-      <div class="row">
-        <input id="chatText" style="flex:1; min-width:220px" placeholder="发点吐槽/站队/阴阳怪气都行" />
-        <button id="btnChat">发送</button>
-      </div>
-      <div id="log" class="card log mono" style="margin-top:10px"></div>
-    </div>
-  </div>
+    <div class="big">玩家</div>
+    <div class="players" id="players"></div>
+
+    <div class="sep"></div>
+
+    <div class="big">你的手牌（可在 REACTION 阶段打反应牌）</div>
+    <div class="hand" id="hand"></div>
+
+    <div class="sep"></div>
+
+    <div class="big">日志</div>
+    <div class="log" id="log"></div>
+  </section>
+</main>
 
 <script>
-let ws, myPlayerId = null, currentRoom = null;
-let lastPublic = null, lastPrivate = null;
+(function(){
+  const $ = (id) => document.getElementById(id);
 
-const ACTIONS = [
-  { key: "mobilize_unify", label: "动员·团结", tip: "+L，花R1" },
-  { key: "mobilize_divide", label: "动员·煽动", tip: "+C -L，花R1（更像民粹）" },
-  { key: "infiltrate", label: "渗透机构", tip: "+C++ -L，花R2（前政党更便宜）" },
-  { key: "agenda", label: "推动议程", tip: "推进胜利进度，花R2" },
-  { key: "investigate", label: "调查/爆料", tip: "抬对手暴露/削资源，花R1" },
-  { key: "foreign_ops", label: "对外操作", tip: "+E++ -L -P，花R1（境外更强）" },
-  { key: "trade", label: "政策交易", tip: "+R1 -L1（暗箱操作）" },
-];
+  let ws = null;
+  let roomId = "room1";
+  let playerId = null;
 
-function el(id){ return document.getElementById(id); }
-function setErr(t){ el("err").innerText = t || ""; }
+  let lastPublic = null;
+  let lastPrivate = null;
 
-function connectAndJoin() {
-  setErr("");
-  const url = el("wsUrl").value.trim();
-  const roomId = el("roomId").value.trim() || "room";
-  const name = el("name").value.trim() || "玩家";
-  currentRoom = roomId;
+  // -------- helpers --------
+  function setConn(text, ok=false){
+    $("connPill").textContent = text;
+    $("connPill").style.color = ok ? "var(--ok)" : "var(--muted)";
+    $("connPill").style.borderColor = ok ? "rgba(57,217,138,.45)" : "var(--bd)";
+  }
+  function send(obj){
+    if(!ws || ws.readyState !== 1) return;
+    ws.send(JSON.stringify(obj));
+  }
+  function fmtPlayerName(pid){
+    const p = lastPublic?.players?.find(x=>x.id===pid);
+    return p ? `${p.name} (${p.id})` : pid;
+  }
+  function msLeft(endsAt){
+    if(!endsAt) return null;
+    return Math.max(0, endsAt - Date.now());
+  }
+  function phaseCanAct(){
+    const ph = lastPublic?.phase;
+    return ph === "ACTION";
+  }
+  function phaseCanPlot(){
+    return lastPublic?.phase === "PLOTTING";
+  }
+  function phaseCanVote(){
+    return lastPublic?.phase === "VOTE";
+  }
+  function phaseCanCrisis(){
+    return lastPublic?.phase === "CRISIS";
+  }
+  function phaseCanCoupStop(){
+    const ph = lastPublic?.phase;
+    return ph === "COUP_NEGOTIATION" || ph === "COUP_REACTION";
+  }
+  function phaseCanReact(){
+    const ph = lastPublic?.phase;
+    return ph === "REACTION" || ph === "COUP_NEGOTIATION" || ph === "COUP_REACTION";
+  }
+  function isMyTurn(){
+    return lastPublic && lastPublic.currentPlayerId === playerId;
+  }
 
-  ws = new WebSocket(url);
-  ws.onopen = () => {
-    ws.send(JSON.stringify({ type:"join", roomId, name }));
-  };
-  ws.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    if (msg.type === "joined") {
-      myPlayerId = msg.playerId;
-      renderPublic(msg.state);
-      buildActions();
-      pingPrivate();
+  // -------- render --------
+  function render(){
+    const pub = lastPublic;
+    const priv = lastPrivate;
+
+    $("phaseText").textContent = pub?.phase ?? "-";
+    $("turnText").textContent = pub?.turn ?? "-";
+    $("presText").textContent = pub?.presidentId ? fmtPlayerName(pub.presidentId) : "-";
+    $("curText").textContent = pub?.currentPlayerId ? fmtPlayerName(pub.currentPlayerId) : "-";
+    $("pidText").textContent = playerId ?? "-";
+
+    // agenda / offer / coup
+    if(pub?.agenda){
+      $("agendaText").textContent = `议题：${pub.agenda.name}｜${pub.agenda.text}｜危机阈值=${pub.agenda.crisisNeed}（${pub.agenda.crisisText}）`;
+    } else {
+      $("agendaText").textContent = "议题：-";
     }
-    if (msg.type === "state") renderPublic(msg.state);
-    if (msg.type === "private") renderPrivate(msg.state);
-    if (msg.type === "error") setErr(msg.message);
-  };
-  ws.onclose = () => setErr("连接断开（刷新重连）");
-}
 
-function pingPrivate(){
-  if (!ws || ws.readyState !== 1) return;
-  ws.send(JSON.stringify({ type:"ping_state", roomId: currentRoom }));
-}
+    if(pub?.allianceOffer){
+      $("offerText").textContent = `联盟提案：${fmtPlayerName(pub.allianceOffer.fromId)} → ${fmtPlayerName(pub.allianceOffer.toId)}`;
+    } else {
+      $("offerText").textContent = "联盟提案：-";
+    }
 
-function send(type, payload){
-  if (!ws || ws.readyState !== 1) return setErr("未连接");
-  ws.send(JSON.stringify({ type, roomId: currentRoom, ...payload }));
-}
+    if(pub?.coup){
+      const t = pub.coup.type === "VIOLENT" ? "暴力政变" : "军事接管";
+      $("coupText").textContent = `政变：${t}｜发动者=${fmtPlayerName(pub.coup.leaderId)}｜阻止总筹码=${pub.coup.totalContrib}｜blockedByCard=${pub.coup.blockedByCard}｜截止=${new Date(pub.coup.endsAt).toLocaleTimeString()}`;
+    } else {
+      $("coupText").textContent = "政变：-";
+    }
 
-function renderPublic(state){
-  lastPublic = state;
-  const s = state;
-  const meTurn = s.players[s.currentPlayerIdx]?.id === myPlayerId;
-  const lines = [];
-  lines.push(`回合: ${s.turn}/${8}  阶段: ${s.phase}  当前行动者: ${s.players[s.currentPlayerIdx]?.name || "-"}`);
-  lines.push(`L(合法性): ${s.L}   C(控制力): ${s.C}   P(繁荣): ${s.P}   E(外部影响): ${s.E}   危机层数: ${s.crisis}`);
-  if (s.winner) lines.push(`🏁 胜利方: ${s.winner}  |  结局: ${s.ending}`);
-  el("publicState").innerText = lines.join("\n");
+    // players list
+    const playersEl = $("players");
+    playersEl.innerHTML = "";
+    (pub?.players || []).forEach(p=>{
+      const el = document.createElement("div");
+      el.className = "p" + (p.id === playerId ? " you":"") + (p.id === pub?.currentPlayerId ? " turn":"");
+      const left = document.createElement("div");
+      left.innerHTML = `
+        <div class="name">${p.name} <span class="tag">${p.kind}${p.exposed ? "｜暴露" : ""}</span></div>
+        <div class="meta mono">${p.id}${p.allianceWith ? ` ｜盟友:${fmtPlayerName(p.allianceWith)}` : ""}${p.untrusted ? ` ｜不可信:${p.untrusted}` : ""}</div>
+      `;
+      const right = document.createElement("div");
+      right.className = "stats";
+      right.innerHTML = `
+        <div class="stat">S ${p.S}</div>
+        <div class="stat">T ${p.T}</div>
+        <div class="stat">M ${p.M}</div>
+        <div class="stat">W ${p.coupW || 0}</div>
+      `;
+      el.appendChild(left);
+      el.appendChild(right);
+      playersEl.appendChild(el);
+    });
 
-  // 事件
-  if (s.eventTop) {
-    el("eventBox").innerText = `📰 事件：${s.eventTop.name} —— ${s.eventTop.text}（影响：${JSON.stringify(s.eventTop.effects)}）`;
-  } else {
-    el("eventBox").innerText = "";
+    // private KPIs
+    if(priv?.me){
+      $("myRole").textContent = priv.me.role ?? "-";
+      $("myS").textContent = priv.me.S ?? "-";
+      $("myT").textContent = priv.me.T ?? "-";
+      $("myM").textContent = priv.me.M ?? "-";
+      $("myU").textContent = priv.me.untrusted ?? 0;
+      $("myW").textContent = priv.me.coupW ?? 0;
+    } else {
+      $("myRole").textContent = "-";
+      $("myS").textContent = "-";
+      $("myT").textContent = "-";
+      $("myM").textContent = "-";
+      $("myU").textContent = "-";
+      $("myW").textContent = "-";
+    }
+
+    // targets select (public players)
+    const selT = $("selTarget");
+    const prev = selT.value;
+    selT.innerHTML = `<option value="">（自动/默认目标）</option>`;
+    (pub?.players || []).forEach(p=>{
+      if(p.id === playerId) return;
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = `${p.name} (${p.id})`;
+      selT.appendChild(opt);
+    });
+    if([...selT.options].some(o=>o.value===prev)) selT.value = prev;
+
+    // facedown select from private hand
+    const selF = $("selFacedown");
+    const prevF = selF.value;
+    selF.innerHTML = "";
+    (priv?.me?.hand || []).forEach(c=>{
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = `${c.name} [${c.type}/${c.tag}]`;
+      selF.appendChild(opt);
+    });
+    if([...selF.options].some(o=>o.value===prevF)) selF.value = prevF;
+
+    // hand render
+    const handEl = $("hand");
+    handEl.innerHTML = "";
+    (priv?.me?.hand || []).forEach(c=>{
+      const card = document.createElement("div");
+      const isFD = priv?.me?.facedownId && priv.me.facedownId === c.id;
+      card.className = "card" + (isFD ? " facedown":"");
+      card.innerHTML = `
+        <div class="left">
+          <div class="title">${c.name} <span class="badge">${c.type}</span> <span class="badge">${c.tag}</span> ${isFD ? `<span class="badge">暗置</span>`:""}</div>
+          <div class="desc">${c.text || ""}</div>
+        </div>
+        <div class="right">
+          <button data-reaction="${c.id}" ${c.type!=="REACTION" ? "disabled":""}>打反应</button>
+        </div>
+      `;
+      card.querySelector("button").addEventListener("click", ()=>{
+        if(!phaseCanReact()) return toast("当前不是反应窗口/政变窗口");
+        send({ type:"reaction", roomId, cardId: c.id });
+      });
+      handEl.appendChild(card);
+    });
+
+    // buttons enable/disable
+    $("btnSetFacedown").disabled = !(phaseCanPlot() && priv?.me?.hand?.length);
+    $("btnSetDecl").disabled = !phaseCanPlot();
+
+    $("btnPlayFacedown").disabled = !(phaseCanAct() && isMyTurn());
+    $("btnPrepCoup").disabled = !(phaseCanAct() && isMyTurn());
+    $("btnLaunchCoup").disabled = !(phaseCanAct() && isMyTurn());
+    $("btnBreakAlliance").disabled = !(phaseCanAct() && isMyTurn());
+
+    $("btnChallenge").disabled = !phaseCanPlot();
+    $("btnAcceptAlliance").disabled = !(lastPublic?.allianceOffer && phaseCanReact());
+
+    $("btnVoteYes").disabled = !phaseCanVote();
+    $("btnVoteNo").disabled = !phaseCanVote();
+    $("btnVoteAbstain").disabled = !phaseCanVote();
+
+    $("btnCrisisPay").disabled = !phaseCanCrisis();
+    $("btnCoupPay").disabled = !phaseCanCoupStop();
   }
 
-  // 玩家列表
-  const plist = s.players.map((p, idx) => {
-    const tag = idx === s.currentPlayerIdx ? "▶" : " ";
-    return `${tag} ${p.name} [${p.kind}] 阵营:${p.faction} R:${p.R} 议程:${p.agenda} 暴露:${p.exposure}${p.usedSecret ? "（已用暗线）" : ""}`;
-  }).join("\n");
-  el("publicState").innerText += "\n\n" + plist;
-
-  // 日志
-  el("log").innerText = s.log.join("\n");
-  el("log").scrollTop = el("log").scrollHeight;
-
-  // 按钮可用性
-  for (const btn of document.querySelectorAll("[data-action]")) {
-    btn.disabled = !(s.started && s.phase === "action" && meTurn && !s.winner);
+  // -------- log --------
+  function renderLog(){
+    const pub = lastPublic;
+    const logEl = $("log");
+    logEl.innerHTML = "";
+    (pub?.log || []).forEach((line)=>{
+      const div = document.createElement("div");
+      div.className = "line";
+      div.textContent = line;
+      logEl.appendChild(div);
+    });
+    logEl.scrollTop = logEl.scrollHeight;
   }
-  el("btnStart").disabled = s.started || s.players.length < 2;
-  el("btnAddAI1").disabled = s.started;
-  el("btnAddAI2").disabled = s.started;
 
-  // 暗线按钮
-  const myShadowTurn = (s.phase === "shadow" && !s.winner && shadowWhoseTurnIsMine());
-  el("btnShadowSkip").disabled = !myShadowTurn;
-  el("btnShadowPop").disabled = !myShadowTurn;
-  el("btnShadowAut").disabled = !myShadowTurn;
-}
-
-function shadowWhoseTurnIsMine(){
-  // 前端不知道 shadowQueue，只能用私密信息提示+轮转体验
-  // 这里用“当前行动者”不准确，所以简化：允许你点，后端会判断并报错
-  return true;
-}
-
-function renderPrivate(pstate){
-  lastPrivate = pstate;
-  if (!pstate || !pstate.me) return;
-  const me = pstate.me;
-  el("privateState").innerText =
-`你是：${me.name}
-阵营（明牌）：${me.faction}
-身份（暗牌）：${me.role}
-暗线技能：${me.secretSkill?.name || "无"} - ${me.secretSkill?.desc || ""}
-资源R：${me.R}   议程：${me.agenda}   暴露度：${me.exposure}
-暗线使用：${me.usedSecret ? "已用" : "未用"}`
-}
-
-function buildActions(){
-  const box = el("actions");
-  box.innerHTML = "";
-  for (const a of ACTIONS){
-    const b = document.createElement("button");
-    b.innerHTML = `<div>${a.label}</div><div class="small">${a.tip}</div>`;
-    b.dataset.action = a.key;
-    b.onclick = () => send("action", { actionKey: a.key });
-    box.appendChild(b);
+  // -------- toast (very light) --------
+  function toast(msg){
+    // 简化：直接在日志里插一句
+    const logEl = $("log");
+    const div = document.createElement("div");
+    div.className = "line dim";
+    div.textContent = `（提示）${msg}`;
+    logEl.appendChild(div);
+    logEl.scrollTop = logEl.scrollHeight;
   }
-}
 
-el("btnJoin").onclick = connectAndJoin;
-el("btnAddAI1").onclick = () => send("add_ai", { count: 1 });
-el("btnAddAI2").onclick = () => send("add_ai", { count: 2 });
-el("btnStart").onclick = () => send("start", {});
-el("btnChat").onclick = () => {
-  const t = el("chatText").value.trim();
-  if (!t) return;
-  send("chat", { text: t });
-  el("chatText").value = "";
-};
+  // -------- timer UI --------
+  setInterval(()=>{
+    const endsAt = lastPublic?.phaseEndsAt;
+    if(!endsAt) { $("timerText").textContent = "-"; return; }
+    const left = msLeft(endsAt);
+    $("timerText").textContent = `${Math.ceil(left/1000)}s`;
+  }, 250);
 
-// 暗线
-el("btnShadowSkip").onclick = () => send("shadow", { skillKey: "skip" });
-el("btnShadowPop").onclick = () => send("shadow", { skillKey: "populist_overdrive" });
-el("btnShadowAut").onclick = () => send("shadow", { skillKey: "autocrat_freeze" });
+  // -------- ws events --------
+  function connect(){
+    if(ws && ws.readyState === 1) return;
+    const url = $("wsUrl").value.trim();
+    ws = new WebSocket(url);
 
+    setConn("连接中…", false);
+
+    ws.onopen = ()=>{
+      setConn("已连接", true);
+      toast("WS 连接成功");
+    };
+
+    ws.onclose = ()=>{
+      setConn("已断开", false);
+      toast("WS 连接关闭");
+      ws = null;
+      playerId = null;
+      lastPublic = null;
+      lastPrivate = null;
+      $("pidText").textContent = "-";
+      render();
+      renderLog();
+    };
+
+    ws.onerror = ()=>{
+      toast("WS 错误（请检查端口/地址）");
+    };
+
+    ws.onmessage = (ev)=>{
+      let msg = null;
+      try { msg = JSON.parse(ev.data); } catch { return; }
+
+      if(msg.type === "error"){
+        toast("错误：" + msg.message);
+        return;
+      }
+
+      if(msg.type === "joined"){
+        playerId = msg.playerId;
+        lastPublic = msg.state || lastPublic;
+        toast(`加入成功：${playerId}`);
+        render();
+        renderLog();
+        return;
+      }
+
+      if(msg.type === "state"){
+        lastPublic = msg.state;
+        render();
+        renderLog();
+        return;
+      }
+
+      if(msg.type === "private"){
+        lastPrivate = msg.state;
+        render();
+        return;
+      }
+    };
+  }
+
+  // -------- actions --------
+  $("btnConnect").addEventListener("click", connect);
+
+  $("btnDisconnect").addEventListener("click", ()=>{
+    if(ws) ws.close();
+  });
+
+  $("btnJoin").addEventListener("click", ()=>{
+    if(!ws || ws.readyState !== 1) return toast("请先连接 WS");
+    roomId = $("roomId").value.trim() || "room1";
+    const name = $("name").value.trim() || "玩家";
+    send({ type:"join", roomId, name });
+  });
+
+  $("btnAddAI").addEventListener("click", ()=>{
+    if(!ws || ws.readyState !== 1) return toast("请先连接 WS");
+    roomId = $("roomId").value.trim() || "room1";
+    const count = Math.max(1, Math.min(3, Number($("aiCount").value || 1)));
+    send({ type:"add_ai", roomId, count });
+  });
+
+  $("btnStart").addEventListener("click", ()=>{
+    if(!ws || ws.readyState !== 1) return toast("请先连接 WS");
+    roomId = $("roomId").value.trim() || "room1";
+    send({ type:"start", roomId });
+  });
+
+  $("btnPing").addEventListener("click", ()=>{
+    if(!ws || ws.readyState !== 1) return toast("请先连接 WS");
+    roomId = $("roomId").value.trim() || "room1";
+    send({ type:"ping_state", roomId });
+  });
+
+  $("btnClearLog").addEventListener("click", ()=>{
+    $("log").innerHTML = "";
+  });
+
+  $("btnSetFacedown").addEventListener("click", ()=>{
+    if(!phaseCanPlot()) return toast("当前不是密谋阶段");
+    const cardId = $("selFacedown").value;
+    if(!cardId) return toast("请先选一张牌");
+    send({ type:"plot_set_facedown", roomId, cardId });
+  });
+
+  $("btnSetDecl").addEventListener("click", ()=>{
+    if(!phaseCanPlot()) return toast("当前不是密谋阶段");
+    const tag = $("selDecl").value;
+    const text = $("declText").value || "";
+    send({ type:"plot_set_declaration", roomId, tag, text });
+  });
+
+  $("btnChallenge").addEventListener("click", ()=>{
+    if(!phaseCanPlot()) return toast("质疑只能在密谋阶段");
+    const targetId = $("selTarget").value;
+    if(!targetId) return toast("请选择质疑目标");
+    send({ type:"challenge", roomId, targetId });
+  });
+
+  $("btnPlayFacedown").addEventListener("click", ()=>{
+    if(!phaseCanAct()) return toast("当前不是行动阶段");
+    if(!isMyTurn()) return toast("还没轮到你");
+    const targetId = $("selTarget").value || null;
+    send({ type:"action", roomId, actionKey:"PLAY_FACEDOWN", payload:{ targetId } });
+  });
+
+  $("btnPrepCoup").addEventListener("click", ()=>{
+    if(!phaseCanAct()) return toast("当前不是行动阶段");
+    if(!isMyTurn()) return toast("还没轮到你");
+    send({ type:"action", roomId, actionKey:"PREP_COUP", payload:{} });
+  });
+
+  $("btnLaunchCoup").addEventListener("click", ()=>{
+    if(!phaseCanAct()) return toast("当前不是行动阶段");
+    if(!isMyTurn()) return toast("还没轮到你");
+    send({ type:"action", roomId, actionKey:"LAUNCH_COUP", payload:{} });
+  });
+
+  $("btnBreakAlliance").addEventListener("click", ()=>{
+    if(!phaseCanAct()) return toast("当前不是行动阶段");
+    if(!isMyTurn()) return toast("还没轮到你");
+    send({ type:"action", roomId, actionKey:"BREAK_ALLIANCE", payload:{} });
+  });
+
+  $("btnAcceptAlliance").addEventListener("click", ()=>{
+    if(!phaseCanReact()) return toast("当前不是反应窗口");
+    send({ type:"accept_alliance", roomId });
+  });
+
+  $("btnVoteYes").addEventListener("click", ()=> send({ type:"vote", roomId, choice:"YES" }));
+  $("btnVoteNo").addEventListener("click", ()=> send({ type:"vote", roomId, choice:"NO" }));
+  $("btnVoteAbstain").addEventListener("click", ()=> send({ type:"vote", roomId, choice:"ABSTAIN" }));
+
+  $("btnCrisisPay").addEventListener("click", ()=>{
+    if(!phaseCanCrisis()) return toast("当前不是危机阶段");
+    const amount = Math.max(1, Math.min(10, Number($("amt").value || 1)));
+    send({ type:"crisis_contribute", roomId, amount });
+  });
+
+  $("btnCoupPay").addEventListener("click", ()=>{
+    if(!phaseCanCoupStop()) return toast("当前不是政变阻止阶段");
+    const amount = Math.max(1, Math.min(10, Number($("amt").value || 1)));
+    send({ type:"coup_contribute", roomId, amount });
+  });
+
+  function sendChat(){
+    const text = $("chatText").value.trim();
+    if(!text) return;
+    send({ type:"chat", roomId, text });
+    $("chatText").value = "";
+  }
+  $("btnChat").addEventListener("click", sendChat);
+  $("chatText").addEventListener("keydown", (e)=>{ if(e.key==="Enter") sendChat(); });
+
+  // initial render
+  render();
+  renderLog();
+})();
 </script>
 </body>
 </html>
