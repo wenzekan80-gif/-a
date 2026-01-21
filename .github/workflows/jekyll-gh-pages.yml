@@ -1,0 +1,51 @@
+# Sample workflow for building and deploying a Jekyll site to GitHub Pages# 用于构建和部署 Jekyll 站点到 GitHub Pages 的示例工作流# 用于构建和部署 Jekyll 站点到 GitHub Pages 的示例工作流# 示例工作流用于构建和部署 Jekyll 站点到 GitHub Pages# 用于构建和部署 Jekyll 站点到 GitHub Pages 的示例工作流# 用于构建和部署 Jekyll 站点到 GitHub Pages 的示例工作流# 用于构建和部署 Jekyll 站点到 GitHub Pages 的示例工作流# 示例工作流用于构建和部署 Jekyll 站点到 GitHub Pages# 用于构建和部署 Jekyll 站点到 GitHub Pages 的示例工作流# 用于构建和部署 Jekyll 站点到 GitHub Pages 的示例工作流# 用于构建和部署 Jekyll 站点到 GitHub Pages 的示例工作流# 示例工作流用于构建和部署 Jekyll 站点到 GitHub Pages# 用于构建和部署 Jekyll 站点到 GitHub Pages 的示例工作流# 用于构建和部署 Jekyll 站点到 GitHub Pages 的示例工作流# 用于构建和部署 Jekyll 站点到 GitHub Pages 的示例工作流# 示例工作流用于构建和部署 Jekyll 站点到 GitHub Pages
+name名称名称: : : Deploy Jekyll with GitHub Pages dependencies preinstalled使用预安装 GitHub Pages 依赖项部署 Jekyll使用预安装 GitHub Pages 依赖项部署 Jekyllname名称名称: : : 使用预安装 GitHub Pages 依赖项部署 Jekyll
+
+on启用启用启用启用:
+  # Runs on pushes targeting the default branch# 在推送到默认分支时运行# 在推送到默认分支时运行# 在推送到默认分支时运行# 在推送到默认分支时运行# 在推送到默认分支时运行# 在推送到默认分支时运行# 在推送到默认分支时运行# 在推送到默认分支时运行# 在推送到默认分支时运行# 在推送到默认分支时运行# 在推送到默认分支时运行# 在推送到默认分支时运行# 在推送到默认分支时运行
+  push推送:推送推送推送推送：推送推送:
+    branches分支: ["main"“main”]分支: ["main"分支: ["main"“main”]分支: ["main"“main”]分支: ["main"“main”“main”]分支: ["main"“main”“main”分支: ["main"“main”“main”“main”]分支: ["main"“main”“main”“main”]
+
+  # Allows you to run this workflow manually from the Actions tab# 允许您从“操作”选项卡手动运行此工作流# 允许您从“操作”选项卡手动运行此工作流# 允许您从“操作”选项卡手动运行此工作流# 允许您从“操作”选项卡手动运行此工作流# 允许您从“操作”选项卡手动运行此工作流# 允许您从“操作”选项卡手动运行此工作流
+  workflow_dispatch:工作流调度:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages# 将 GITHUB_TOKEN 的权限设置为允许部署到 GitHub Pages# 将 GITHUB_TOKEN 的权限设置为允许部署到 GitHub Pages# 设置 GITHUB_TOKEN 的权限，以允许部署到 GitHub Pages# 将 GITHUB_TOKEN 的权限设置为允许部署到 GitHub Pages# 将 GITHUB_TOKEN 的权限设置为允许部署到 GitHub Pages# 将 GITHUB_TOKEN 的权限设置为允许部署到 GitHub Pages# 设置 GITHUB_TOKEN 的权限，以允许部署到 GitHub Pages# 将 GITHUB_TOKEN 的权限设置为允许部署到 GitHub Pages# 将 GITHUB_TOKEN 的权限设置为允许部署到 GitHub Pages# 将 GITHUB_TOKEN 的权限设置为允许部署到 GitHub Pages# 设置 GITHUB_TOKEN 的权限，以允许部署到 GitHub Pages# 将 GITHUB_TOKEN 的权限设置为允许部署到 GitHub Pages# 将 GITHUB_TOKEN 的权限设置为允许部署到 GitHub Pages# 将 GITHUB_TOKEN 的权限设置为允许部署到 GitHub Pages# 设置 GITHUB_TOKEN 的权限，以允许部署到 GitHub Pages
+permissions权限:权限:
+  contents内容: read阅读内容: 读取
+  pages页面: write写入页面: 写入
+  id-token身份令牌: write写入身份令牌: 写入
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.# 仅允许一次并发部署，跳过正在进行的部署与最新排队之间已有的排队运行。# 仅允许一次并发部署，跳过正在进行的部署与最新排队之间已有的排队运行。# 仅允许一次并发部署，跳过正在进行的部署与最新排队之间已有的排队运行。# 仅允许一次并发部署，跳过正在进行的部署与最新排队之间已有的排队运行。# 仅允许一次并发部署，跳过正在进行的部署与最新排队之间已有的排队运行。# 仅允许一次并发部署，跳过正在进行的部署与最新排队之间已有的排队运行。# 仅允许一次并发部署，跳过正在进行的部署与最新排队之间已有的排队运行。# 仅允许一次并发部署，跳过正在进行的部署与最新排队之间已有的排队运行。
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.# 但请勿取消正在进行的部署，因为我们希望这些生产部署能够顺利完成。# 但请勿取消正在进行的部署，因为我们希望这些生产部署能够顺利完成。# 但请勿取消正在进行的部署，因为我们希望这些生产部署能够顺利完成。# 但请勿取消正在进行的部署，因为我们希望这些生产部署能够顺利完成。# 但请勿取消正在进行的部署，因为我们希望这些生产部署能够顺利完成。# 但请勿取消正在进行的部署，因为我们希望这些生产部署能够顺利完成。# 但请勿取消正在进行的部署，因为我们希望这些生产部署能够顺利完成。# 但请勿取消正在进行的部署，因为我们希望这些生产部署能够顺利完成。
+concurrency并发:并发:
+  group组: "pages"“页面”“页面”组: "pages"“页面”“页面”
+  cancel-in-progress取消中: false
+
+jobs:作业:
+  # Build job# 构建作业# 构建作业# 构建作业# 构建作业# 构建作业# 构建作业# 构建作业
+  build:构建:
+    runs-on: ubuntu-latest运行于: ubuntu-latest
+    steps:步骤:步骤:步骤:
+      - name名称名称: Checkout      - 名称: 检出
+        uses: actions/checkout@v4使用: actions/checkout@v4使用: actions/checkout@v4使用: actions/checkout@v4使用: actions/checkout@v4使用: actions/checkout@v4使用: actions/checkout@v4使用: actions/checkout@v4
+      - name名称名称: Setup Pages      - 名称: 设置 Pages
+        uses: actions/configure-pages@v5使用: actions/configure-pages@v5
+      - name名称名称:       - 名称: Build with Jekyll使用Jekyll构建      - name名称名称:       - 名称: 使用Jekyll构建
+        uses使用: actions/jekyll-build-pages@v1使用: actions/jekyll-build-pages@v1
+        with与:与与:
+          source来源: ./来源: ./
+          destination: ./_site
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3使用: actions/upload-pages-artifact@v3
+
+  # Deployment job
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest运行于: ubuntu-latest
+    needs: build
+    steps:步骤:步骤:步骤:
+      - name: Deploy to GitHub Pages      - name: 部署到GitHub Pages
+        id: deploymentid: 部署
+        uses: actions/deploy-pages@v4使用: actions/deploy-pages@v4
