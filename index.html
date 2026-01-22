@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>空壳之国（轻量互动版）</title>
   <style>
-    :root { --bg:#0b0f14; --card:#121a24; --muted:#7c8aa5; --fg:#eaf1ff; --bd:#223146; --ok:#39d98a; --warn:#ffb020; --bad:#ff5d5d; }
+    :root { --bg:#0b0f14; --card:#121a24; --muted:#7c8aa5; --fg:#eaf1ff; --bd:#223146; --ok:#39d98a; --warn:#ffb020; --bad:#ff5d5d; --narr:#8fb6ff; }
     * { box-sizing: border-box; }
     body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "PingFang SC", "Microsoft YaHei", Arial; background:var(--bg); color:var(--fg); }
     header { padding:14px 16px; border-bottom:1px solid var(--bd); display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
     header .title { font-weight:700; letter-spacing:.5px; }
     header .pill { padding:6px 10px; border:1px solid var(--bd); border-radius:999px; color:var(--muted); font-size:12px; }
-    main { padding:14px 16px; display:grid; gap:14px; grid-template-columns: 360px 1fr; }
+    main { padding:14px 16px; display:grid; gap:14px; grid-template-columns: 380px 1fr; }
     @media (max-width: 980px){ main{ grid-template-columns:1fr; } }
 
     .panel { background:var(--card); border:1px solid var(--bd); border-radius:14px; padding:12px; }
@@ -35,6 +35,7 @@
     button:disabled { opacity:.45; cursor:not-allowed; }
     .small { font-size:12px; color:var(--muted); }
     .big { font-size:16px; font-weight:650; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
 
     .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
     .players { display:flex; flex-direction:column; gap:8px; }
@@ -56,22 +57,31 @@
       display:flex; justify-content:space-between; gap:10px;
     }
     .card .left { display:flex; flex-direction:column; gap:4px; }
-    .card .right { display:flex; gap:8px; align-items:center; }
+    .card .right { display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
     .card .title { font-weight:650; }
     .card .desc { font-size:12px; color:var(--muted); line-height:1.35; }
     .card .badge { font-size:12px; padding:2px 8px; border-radius:999px; border:1px solid var(--bd); color:var(--muted); }
     .card.facedown { border-color:rgba(74,120,181,.65); }
 
-    .log { height:520px; overflow:auto; padding-right:6px; display:flex; flex-direction:column; gap:6px; }
+    .log { height:540px; overflow:auto; padding-right:6px; display:flex; flex-direction:column; gap:6px; }
     .line { font-size:12px; color:#d6e3ff; opacity:.92; line-height:1.35; }
     .line.dim { color:var(--muted); }
-
+    .line.narr { color: var(--narr); opacity: .95; border:1px dashed rgba(143,182,255,.25); background:rgba(143,182,255,.06); padding:8px 10px; border-radius:10px; }
     .sep { height:1px; background:var(--bd); margin:10px 0; }
+
     .timer { font-size:12px; color:var(--muted); }
     .kpi { display:flex; gap:10px; flex-wrap:wrap; }
     .kpi .box { border:1px solid var(--bd); border-radius:12px; padding:8px 10px; }
     .kpi .box .v { font-weight:700; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+
+    .hintbox{
+      border:1px solid rgba(255,176,32,.25);
+      background:rgba(255,176,32,.05);
+      border-radius:12px;
+      padding:10px;
+    }
+    .hintbox .t{ font-weight:650; }
+    .hintbox .b{ font-size:12px; color:var(--muted); line-height:1.45; margin-top:6px; }
   </style>
 </head>
 <body>
@@ -86,9 +96,9 @@
 </header>
 
 <main>
-  <!-- 左侧：控制 & 个人信息 -->
+  <!-- 左侧：更“傻瓜化”的操作面板 -->
   <section class="panel col">
-    <div class="big">连接/房间</div>
+    <div class="big">快速开始</div>
     <div class="grid2">
       <div class="col">
         <label>WS 地址</label>
@@ -103,18 +113,25 @@
         <input id="name" value="玩家" />
       </div>
       <div class="col">
-        <label>AI 数量（1~3）</label>
-        <input id="aiCount" type="number" min="1" max="3" value="1" />
+        <label>AI 数量（0~3）</label>
+        <input id="aiCount" type="number" min="0" max="3" value="1" />
       </div>
     </div>
+
     <div class="row">
-      <button class="primary" id="btnConnect">连接</button>
-      <button id="btnJoin">加入房间</button>
-      <button id="btnAddAI">加 AI</button>
-      <button class="ok" id="btnStart">开始</button>
-      <button class="bad" id="btnDisconnect">断开</button>
+      <button class="primary" id="btnOneClick">一键开局（连→进→加AI→开始）</button>
+      <button id="btnConnect">仅连接</button>
+      <button id="btnDisconnect" class="bad">断开</button>
     </div>
     <div class="small">你的 PlayerId：<span class="mono" id="pidText">-</span></div>
+
+    <div class="sep"></div>
+
+    <div class="big">当前你该做什么</div>
+    <div class="hintbox">
+      <div class="t" id="nextTitle">-</div>
+      <div class="b" id="nextBody">连接后会显示下一步提示。</div>
+    </div>
 
     <div class="sep"></div>
 
@@ -130,8 +147,9 @@
 
     <div class="sep"></div>
 
-    <div class="big">阶段操作</div>
+    <div class="big">操作（按阶段自动解锁）</div>
 
+    <!-- 密谋：暗置+声明 -->
     <div class="col">
       <label>密谋：选择暗置牌</label>
       <select id="selFacedown"></select>
@@ -160,6 +178,7 @@
 
     <div class="sep"></div>
 
+    <!-- 通用目标/金额 -->
     <div class="grid2">
       <div class="col">
         <label>目标玩家（打牌/质疑）</label>
@@ -202,7 +221,7 @@
       <button id="btnChat">发送</button>
     </div>
 
-    <div class="small">提示：若你改了后端端口/地址，记得改 WS 地址。</div>
+    <div class="small">说明：这个前端会自动插入“叙事档案”到日志里，让流程没那么人机。</div>
   </section>
 
   <!-- 右侧：公共状态 / 手牌 / 日志 -->
@@ -227,12 +246,12 @@
 
     <div class="sep"></div>
 
-    <div class="big">你的手牌（可在 REACTION 阶段打反应牌）</div>
+    <div class="big">你的手牌（REACTION 阶段可打反应牌）</div>
     <div class="hand" id="hand"></div>
 
     <div class="sep"></div>
 
-    <div class="big">日志</div>
+    <div class="big">日志（含叙事档案）</div>
     <div class="log" id="log"></div>
   </section>
 </main>
@@ -247,6 +266,176 @@
 
   let lastPublic = null;
   let lastPrivate = null;
+
+  // -------- narrative (内置，无需额外文件) --------
+  const Narrative = (function(){
+    // 每回合最多插入 1 条“档案”
+    const maxPerTurn = 1;
+
+    const TEXT = {
+      INTRO: "这里仍然被称为一个国家：有国旗、有议会、有总统、有一套还在运行的程序。只是越来越少的人再问：这些程序现在还意味着什么？",
+
+      TURN_OPEN: [
+        "地图还挂在墙上，但边界每天都在变得更像口头约定。",
+        "电视里仍在播报“统一口径”。而统一，正在失去意义。",
+        "旧秩序像一栋空楼：灯还亮着，人已经走散。"
+      ],
+
+      PLOTTING: [
+        "密谋并不需要秘密。只需要所有人都假装：自己还相信规则。",
+        "声明是给观众看的。筹码是给现实看的。",
+        "每个人都在说“我会做什么”。没人保证那是真的。"
+      ],
+
+      CHALLENGE: "质疑不是为了真相，只是为了测试：你敢不敢被当众拆穿？",
+      ALLIANCE_FORM: "联盟不是承诺，只是暂时重合的利益。这个国家里，关系默认会破裂。",
+      ALLIANCE_BREAK: "协议还在。只是已经没有人打算遵守它。",
+      VOTE: "议题仍会被讨论、表决、记录。没人确定：它们是否还会被执行。",
+      CRISIS: "危机并不是突发的。它只是终于不再被掩盖。",
+      COUP_W: "有人不再等待制度给出答案。他们开始准备别的方案。",
+      COUP_VIOLENT: "街头出现不明的集结。没有人承认自己在组织，但所有人都在计算成本。",
+      COUP_MIL: "军队没有宣布立场。他们只是停止等待命令。",
+
+      SOFT_WIN: "选举结果已经被写在纸上。真正的问题是：这张纸是否还管用？",
+      WIN_INTERRUPTED: "权力从来不是被授予的。它只会在混乱里被夺走。",
+      FINAL_ELECT: "局势暂时稳定下来。没有人再试图挑战这个结果——至少现在没有。",
+      FINAL_COUP: "程序仍然存在。只是它已经不再重要。",
+      FINAL_TIME: "混乱持续得太久。人们开始默认：最有力量的人就是赢家。"
+    };
+
+    let lastRoomId = null;
+    let lastTurn = null;
+    let lastPhase = null;
+    let lastLogLen = 0;
+
+    const seenGlobal = new Set();
+    let seenThisTurn = new Set();
+    let insertedThisTurn = 0;
+
+    let sawSoftEnd = false;
+
+    function rnd(arr){ return arr[Math.floor(Math.random() * arr.length)]; }
+
+    function resetRoom(roomId){
+      lastRoomId = roomId;
+      lastTurn = null;
+      lastPhase = null;
+      lastLogLen = 0;
+      seenThisTurn = new Set();
+      insertedThisTurn = 0;
+      sawSoftEnd = false;
+      // 不清 global（可改）
+      // seenGlobal.clear();
+    }
+
+    function resetTurn(turn){
+      lastTurn = turn;
+      seenThisTurn = new Set();
+      insertedThisTurn = 0;
+      sawSoftEnd = false;
+    }
+
+    function canInsert(){
+      return insertedThisTurn < maxPerTurn;
+    }
+
+    function insert(key, text){
+      if(!canInsert()) return;
+      // 防抖：同回合不重复
+      if(seenThisTurn.has(key)) return;
+      seenThisTurn.add(key);
+
+      // 有些只触发一次（全局）
+      const onceKeys = new Set(["INTRO","VOTE","CRISIS"]);
+      if(onceKeys.has(key)){
+        if(seenGlobal.has(key)) return;
+        seenGlobal.add(key);
+      }
+
+      insertedThisTurn++;
+      addNarrativeLine(text);
+    }
+
+    function addNarrativeLine(text){
+      // 往日志 DOM 里直接插“档案”
+      const logEl = $("log");
+      const div = document.createElement("div");
+      div.className = "line narr";
+      div.textContent = "〔档案〕 " + text;
+      logEl.appendChild(div);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function onState(pub){
+      if(!pub) return;
+
+      if(pub.roomId && pub.roomId !== lastRoomId){
+        resetRoom(pub.roomId);
+        insert("INTRO", TEXT.INTRO);
+      }
+
+      if(pub.turn != null && pub.turn !== lastTurn){
+        resetTurn(pub.turn);
+        insert("TURN_OPEN", rnd(TEXT.TURN_OPEN));
+      }
+
+      if(pub.phase !== lastPhase){
+        const prev = lastPhase;
+        lastPhase = pub.phase;
+
+        if(pub.phase === "PLOTTING"){
+          insert("PLOTTING", rnd(TEXT.PLOTTING));
+        }
+        if(pub.phase === "VOTE"){
+          insert("VOTE", TEXT.VOTE);
+        }
+        if(pub.phase === "CRISIS"){
+          insert("CRISIS", TEXT.CRISIS);
+        }
+
+        if(pub.phase === "END"){
+          // 读最后一条 log 判断结局
+          const logs = pub.log || [];
+          const last = logs[logs.length - 1] || "";
+          if(last.includes("政变成功") || last.includes("军事接管成功") || last.includes("暴力政变成功")){
+            insert("FINAL_COUP", TEXT.FINAL_COUP);
+          } else if(last.includes("时间到胜出")){
+            insert("FINAL_TIME", TEXT.FINAL_TIME);
+          } else {
+            insert("FINAL_ELECT", TEXT.FINAL_ELECT);
+          }
+        }
+      }
+
+      // log 增量触发（更有戏）
+      const logs = pub.log || [];
+      const newLogs = logs.slice(lastLogLen);
+      lastLogLen = logs.length;
+
+      for(const line of newLogs){
+        if(line.includes("⚖️ 质疑成立")) insert("CHALLENGE", TEXT.CHALLENGE);
+        if(line.includes("🤝 联盟成立")) insert("ALLIANCE_FORM", TEXT.ALLIANCE_FORM);
+        if(line.includes("断盟") || line.includes("撕毁联盟") || line.includes("撕毁协议")) insert("ALLIANCE_BREAK", TEXT.ALLIANCE_BREAK);
+        if(line.includes("提升政变威胁")) insert("COUP_W", TEXT.COUP_W);
+        if(line.includes("发动【暴力政变】")) insert("COUP_VIOLENT", TEXT.COUP_VIOLENT);
+        if(line.includes("发动【军事接管】")) insert("COUP_MIL", TEXT.COUP_MIL);
+
+        // 你之前说的“胜利两次”，我们把它包装成“宣布胜利但局势未稳”
+        if(line.includes("🏁 终局") && line.includes("（选举胜利）")){
+          insert("SOFT_WIN", TEXT.SOFT_WIN);
+          sawSoftEnd = true;
+        }
+        if(sawSoftEnd){
+          if(line.includes("进入投票阶段") || line.includes("危机阶段") || line.includes("▶️") || line.includes("⏱️ 反应窗口")){
+            insert("WIN_INTERRUPTED", TEXT.WIN_INTERRUPTED);
+            sawSoftEnd = false;
+          }
+        }
+      }
+    }
+
+    return { onState };
+  })();
 
   // -------- helpers --------
   function setConn(text, ok=false){
@@ -266,19 +455,11 @@
     if(!endsAt) return null;
     return Math.max(0, endsAt - Date.now());
   }
-  function phaseCanAct(){
-    const ph = lastPublic?.phase;
-    return ph === "ACTION";
-  }
-  function phaseCanPlot(){
-    return lastPublic?.phase === "PLOTTING";
-  }
-  function phaseCanVote(){
-    return lastPublic?.phase === "VOTE";
-  }
-  function phaseCanCrisis(){
-    return lastPublic?.phase === "CRISIS";
-  }
+
+  function phaseCanAct(){ return lastPublic?.phase === "ACTION"; }
+  function phaseCanPlot(){ return lastPublic?.phase === "PLOTTING"; }
+  function phaseCanVote(){ return lastPublic?.phase === "VOTE"; }
+  function phaseCanCrisis(){ return lastPublic?.phase === "CRISIS"; }
   function phaseCanCoupStop(){
     const ph = lastPublic?.phase;
     return ph === "COUP_NEGOTIATION" || ph === "COUP_REACTION";
@@ -287,8 +468,66 @@
     const ph = lastPublic?.phase;
     return ph === "REACTION" || ph === "COUP_NEGOTIATION" || ph === "COUP_REACTION";
   }
-  function isMyTurn(){
-    return lastPublic && lastPublic.currentPlayerId === playerId;
+  function isMyTurn(){ return lastPublic && lastPublic.currentPlayerId === playerId; }
+
+  // -------- next-step hint --------
+  function setNext(title, body){
+    $("nextTitle").textContent = title;
+    $("nextBody").textContent = body;
+  }
+
+  function updateNextStepHint(){
+    if(!ws || ws.readyState !== 1){
+      return setNext("还没连接", "点击「一键开局」或「仅连接」。");
+    }
+    if(!playerId){
+      return setNext("还没加入房间", "点击「一键开局」或自己发 join（本前端一键会自动完成）。");
+    }
+    const ph = lastPublic?.phase;
+    if(!lastPublic?.started){
+      return setNext("等待开局", "点击「一键开局」会自动开始；或让任意玩家发 start。");
+    }
+    if(ph === "PLOTTING"){
+      return setNext("密谋阶段", "选一张暗置牌 + 选一个声明标签（可选填补充）。想搞事就质疑别人。");
+    }
+    if(ph === "ACTION"){
+      if(!isMyTurn()) return setNext("行动阶段", "等轮到你。你可以先看局势：谁支持高、谁筹码多。");
+      return setNext("轮到你行动", "点击「打出暗置牌」。强人也可以「预备/发动政变」。");
+    }
+    if(ph === "REACTION"){
+      return setNext("反应窗口", "你可以在手牌里点「打反应」；若有人给你提联盟，也可点「接受联盟」。");
+    }
+    if(ph === "VOTE"){
+      return setNext("投票阶段", "投 YES/NO/ABSTAIN。别忘了：投票不是为了正义，是为了下注。");
+    }
+    if(ph === "CRISIS"){
+      return setNext("危机阶段", "自愿交筹码应对危机。交不交都要付代价：要么损稳定，要么损筹码。");
+    }
+    if(ph === "COUP_NEGOTIATION" || ph === "COUP_REACTION"){
+      return setNext("政变窗口", "你可以出筹码阻止，或在手牌里打对应反政变卡。");
+    }
+    if(ph === "END"){
+      return setNext("终局", "这一局结束了。你可以刷新页面开新房间，或换 roomId 再来一局。");
+    }
+    setNext("进行中", "根据右侧日志行动。");
+  }
+
+  // -------- log helpers --------
+  function addHintLine(msg){
+    const logEl = $("log");
+    const div = document.createElement("div");
+    div.className = "line dim";
+    div.textContent = `（提示）${msg}`;
+    logEl.appendChild(div);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  function addErrorLine(msg){
+    const logEl = $("log");
+    const div = document.createElement("div");
+    div.className = "line dim";
+    div.textContent = `（错误）${msg}`;
+    logEl.appendChild(div);
+    logEl.scrollTop = logEl.scrollHeight;
   }
 
   // -------- render --------
@@ -305,22 +544,16 @@
     // agenda / offer / coup
     if(pub?.agenda){
       $("agendaText").textContent = `议题：${pub.agenda.name}｜${pub.agenda.text}｜危机阈值=${pub.agenda.crisisNeed}（${pub.agenda.crisisText}）`;
-    } else {
-      $("agendaText").textContent = "议题：-";
-    }
+    } else $("agendaText").textContent = "议题：-";
 
     if(pub?.allianceOffer){
       $("offerText").textContent = `联盟提案：${fmtPlayerName(pub.allianceOffer.fromId)} → ${fmtPlayerName(pub.allianceOffer.toId)}`;
-    } else {
-      $("offerText").textContent = "联盟提案：-";
-    }
+    } else $("offerText").textContent = "联盟提案：-";
 
     if(pub?.coup){
       const t = pub.coup.type === "VIOLENT" ? "暴力政变" : "军事接管";
       $("coupText").textContent = `政变：${t}｜发动者=${fmtPlayerName(pub.coup.leaderId)}｜阻止总筹码=${pub.coup.totalContrib}｜blockedByCard=${pub.coup.blockedByCard}｜截止=${new Date(pub.coup.endsAt).toLocaleTimeString()}`;
-    } else {
-      $("coupText").textContent = "政变：-";
-    }
+    } else $("coupText").textContent = "政变：-";
 
     // players list
     const playersEl = $("players");
@@ -363,7 +596,7 @@
       $("myW").textContent = "-";
     }
 
-    // targets select (public players)
+    // targets select
     const selT = $("selTarget");
     const prev = selT.value;
     selT.innerHTML = `<option value="">（自动/默认目标）</option>`;
@@ -397,7 +630,11 @@
       card.className = "card" + (isFD ? " facedown":"");
       card.innerHTML = `
         <div class="left">
-          <div class="title">${c.name} <span class="badge">${c.type}</span> <span class="badge">${c.tag}</span> ${isFD ? `<span class="badge">暗置</span>`:""}</div>
+          <div class="title">${c.name}
+            <span class="badge">${c.type}</span>
+            <span class="badge">${c.tag}</span>
+            ${isFD ? `<span class="badge">暗置</span>`:""}
+          </div>
           <div class="desc">${c.text || ""}</div>
         </div>
         <div class="right">
@@ -405,16 +642,15 @@
         </div>
       `;
       card.querySelector("button").addEventListener("click", ()=>{
-        if(!phaseCanReact()) return toast("当前不是反应窗口/政变窗口");
+        if(!phaseCanReact()) return addHintLine("当前不是反应窗口/政变窗口");
         send({ type:"reaction", roomId, cardId: c.id });
       });
       handEl.appendChild(card);
     });
 
-    // buttons enable/disable
+    // enable/disable buttons（自动化后，按钮只是“保险”）
     $("btnSetFacedown").disabled = !(phaseCanPlot() && priv?.me?.hand?.length);
     $("btnSetDecl").disabled = !phaseCanPlot();
-
     $("btnPlayFacedown").disabled = !(phaseCanAct() && isMyTurn());
     $("btnPrepCoup").disabled = !(phaseCanAct() && isMyTurn());
     $("btnLaunchCoup").disabled = !(phaseCanAct() && isMyTurn());
@@ -429,9 +665,10 @@
 
     $("btnCrisisPay").disabled = !phaseCanCrisis();
     $("btnCoupPay").disabled = !phaseCanCoupStop();
+
+    updateNextStepHint();
   }
 
-  // -------- log --------
   function renderLog(){
     const pub = lastPublic;
     const logEl = $("log");
@@ -442,17 +679,6 @@
       div.textContent = line;
       logEl.appendChild(div);
     });
-    logEl.scrollTop = logEl.scrollHeight;
-  }
-
-  // -------- toast (very light) --------
-  function toast(msg){
-    // 简化：直接在日志里插一句
-    const logEl = $("log");
-    const div = document.createElement("div");
-    div.className = "line dim";
-    div.textContent = `（提示）${msg}`;
-    logEl.appendChild(div);
     logEl.scrollTop = logEl.scrollHeight;
   }
 
@@ -469,17 +695,17 @@
     if(ws && ws.readyState === 1) return;
     const url = $("wsUrl").value.trim();
     ws = new WebSocket(url);
-
     setConn("连接中…", false);
 
     ws.onopen = ()=>{
       setConn("已连接", true);
-      toast("WS 连接成功");
+      addHintLine("WS 连接成功");
+      updateNextStepHint();
     };
 
     ws.onclose = ()=>{
       setConn("已断开", false);
-      toast("WS 连接关闭");
+      addHintLine("WS 连接关闭");
       ws = null;
       playerId = null;
       lastPublic = null;
@@ -487,10 +713,11 @@
       $("pidText").textContent = "-";
       render();
       renderLog();
+      updateNextStepHint();
     };
 
     ws.onerror = ()=>{
-      toast("WS 错误（请检查端口/地址）");
+      addErrorLine("WS 错误（请检查端口/地址）");
     };
 
     ws.onmessage = (ev)=>{
@@ -498,23 +725,33 @@
       try { msg = JSON.parse(ev.data); } catch { return; }
 
       if(msg.type === "error"){
-        toast("错误：" + msg.message);
+        addErrorLine(msg.message);
         return;
       }
 
       if(msg.type === "joined"){
         playerId = msg.playerId;
         lastPublic = msg.state || lastPublic;
-        toast(`加入成功：${playerId}`);
+        addHintLine(`加入成功：${playerId}`);
         render();
         renderLog();
+        // 叙事（可能触发 INTRO/回合开场）
+        Narrative.onState(lastPublic);
+        updateNextStepHint();
         return;
       }
 
       if(msg.type === "state"){
         lastPublic = msg.state;
+
+        // 先渲染真实日志
         render();
         renderLog();
+
+        // 再让叙事插入“档案”（插在日志底部）
+        Narrative.onState(lastPublic);
+
+        updateNextStepHint();
         return;
       }
 
@@ -526,122 +763,135 @@
     };
   }
 
-  // -------- actions --------
-  $("btnConnect").addEventListener("click", connect);
-
-  $("btnDisconnect").addEventListener("click", ()=>{
-    if(ws) ws.close();
-  });
-
-  $("btnJoin").addEventListener("click", ()=>{
-    if(!ws || ws.readyState !== 1) return toast("请先连接 WS");
+  async function oneClickStart(){
+    // 一键：connect -> join -> add_ai -> start
+    const url = $("wsUrl").value.trim();
     roomId = $("roomId").value.trim() || "room1";
     const name = $("name").value.trim() || "玩家";
+    const aiCount = Math.max(0, Math.min(3, Number($("aiCount").value || 0)));
+
+    if(!ws || ws.readyState !== 1){
+      connect();
+      // 等连接
+      await waitFor(()=>ws && ws.readyState === 1, 3000);
+    }
+
     send({ type:"join", roomId, name });
-  });
+    // 等 playerId
+    await waitFor(()=>!!playerId, 3000);
 
-  $("btnAddAI").addEventListener("click", ()=>{
-    if(!ws || ws.readyState !== 1) return toast("请先连接 WS");
-    roomId = $("roomId").value.trim() || "room1";
-    const count = Math.max(1, Math.min(3, Number($("aiCount").value || 1)));
-    send({ type:"add_ai", roomId, count });
-  });
+    if(aiCount > 0){
+      send({ type:"add_ai", roomId, count: aiCount });
+      await sleep(150);
+    }
 
-  $("btnStart").addEventListener("click", ()=>{
-    if(!ws || ws.readyState !== 1) return toast("请先连接 WS");
-    roomId = $("roomId").value.trim() || "room1";
     send({ type:"start", roomId });
-  });
+  }
+
+  function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+  async function waitFor(fn, timeoutMs){
+    const start = Date.now();
+    while(Date.now() - start < timeoutMs){
+      if(fn()) return true;
+      await sleep(50);
+    }
+    return false;
+  }
+
+  // -------- actions --------
+  $("btnOneClick").addEventListener("click", ()=> oneClickStart().catch(()=>addErrorLine("一键开局失败（检查后端是否启动）")));
+  $("btnConnect").addEventListener("click", connect);
+  $("btnDisconnect").addEventListener("click", ()=>{ if(ws) ws.close(); });
 
   $("btnPing").addEventListener("click", ()=>{
-    if(!ws || ws.readyState !== 1) return toast("请先连接 WS");
+    if(!ws || ws.readyState !== 1) return addHintLine("请先连接 WS");
     roomId = $("roomId").value.trim() || "room1";
     send({ type:"ping_state", roomId });
   });
 
-  $("btnClearLog").addEventListener("click", ()=>{
-    $("log").innerHTML = "";
-  });
+  $("btnClearLog").addEventListener("click", ()=>{ $("log").innerHTML = ""; });
 
   $("btnSetFacedown").addEventListener("click", ()=>{
-    if(!phaseCanPlot()) return toast("当前不是密谋阶段");
+    if(!phaseCanPlot()) return addHintLine("当前不是密谋阶段");
     const cardId = $("selFacedown").value;
-    if(!cardId) return toast("请先选一张牌");
+    if(!cardId) return addHintLine("请先选一张牌");
     send({ type:"plot_set_facedown", roomId, cardId });
   });
 
   $("btnSetDecl").addEventListener("click", ()=>{
-    if(!phaseCanPlot()) return toast("当前不是密谋阶段");
+    if(!phaseCanPlot()) return addHintLine("当前不是密谋阶段");
     const tag = $("selDecl").value;
     const text = $("declText").value || "";
     send({ type:"plot_set_declaration", roomId, tag, text });
   });
 
   $("btnChallenge").addEventListener("click", ()=>{
-    if(!phaseCanPlot()) return toast("质疑只能在密谋阶段");
+    if(!phaseCanPlot()) return addHintLine("质疑只能在密谋阶段");
     const targetId = $("selTarget").value;
-    if(!targetId) return toast("请选择质疑目标");
+    if(!targetId) return addHintLine("请选择质疑目标");
     send({ type:"challenge", roomId, targetId });
   });
 
   $("btnPlayFacedown").addEventListener("click", ()=>{
-    if(!phaseCanAct()) return toast("当前不是行动阶段");
-    if(!isMyTurn()) return toast("还没轮到你");
+    if(!phaseCanAct()) return addHintLine("当前不是行动阶段");
+    if(!isMyTurn()) return addHintLine("还没轮到你");
     const targetId = $("selTarget").value || null;
     send({ type:"action", roomId, actionKey:"PLAY_FACEDOWN", payload:{ targetId } });
   });
 
   $("btnPrepCoup").addEventListener("click", ()=>{
-    if(!phaseCanAct()) return toast("当前不是行动阶段");
-    if(!isMyTurn()) return toast("还没轮到你");
+    if(!phaseCanAct()) return addHintLine("当前不是行动阶段");
+    if(!isMyTurn()) return addHintLine("还没轮到你");
     send({ type:"action", roomId, actionKey:"PREP_COUP", payload:{} });
   });
 
   $("btnLaunchCoup").addEventListener("click", ()=>{
-    if(!phaseCanAct()) return toast("当前不是行动阶段");
-    if(!isMyTurn()) return toast("还没轮到你");
+    if(!phaseCanAct()) return addHintLine("当前不是行动阶段");
+    if(!isMyTurn()) return addHintLine("还没轮到你");
     send({ type:"action", roomId, actionKey:"LAUNCH_COUP", payload:{} });
   });
 
   $("btnBreakAlliance").addEventListener("click", ()=>{
-    if(!phaseCanAct()) return toast("当前不是行动阶段");
-    if(!isMyTurn()) return toast("还没轮到你");
+    if(!phaseCanAct()) return addHintLine("当前不是行动阶段");
+    if(!isMyTurn()) return addHintLine("还没轮到你");
     send({ type:"action", roomId, actionKey:"BREAK_ALLIANCE", payload:{} });
   });
 
   $("btnAcceptAlliance").addEventListener("click", ()=>{
-    if(!phaseCanReact()) return toast("当前不是反应窗口");
+    if(!phaseCanReact()) return addHintLine("当前不是反应窗口");
     send({ type:"accept_alliance", roomId });
   });
 
-  $("btnVoteYes").addEventListener("click", ()=> send({ type:"vote", roomId, choice:"YES" }));
-  $("btnVoteNo").addEventListener("click", ()=> send({ type:"vote", roomId, choice:"NO" }));
-  $("btnVoteAbstain").addEventListener("click", ()=> send({ type:"vote", roomId, choice:"ABSTAIN" }));
+  $("btnVoteYes").addEventListener("click", ()=> send({ type:"vote", roomId, choice:"YES" }));$("btnVoteYes").addEventListener("click"“点击”, () => send({ type类型: "vote"“投票”, roomId房间ID, choice选择: "YES" }));
+  $("btnVoteNo").addEventListener("click", ()=> send发送发送({ type:"vote", roomId, choice选择:"NO"“不” }));$("btnVoteNo").addEventListener("click", () => send发送发送({ type: "vote", roomId, choice选择: "NO"“不” }));$("btnVoteNo").addEventListener("click", () => send({ type: "vote", roomId, choice: "NO", "不" }));
+  $("btnVoteAbstain").addEventListener("click", ()=> send({ type:"vote", roomId, choice:"ABSTAIN" }));$("btnVoteAbstain").addEventListener("click", () => send({ type: "vote", roomId, choice: "ABSTAIN" }));$("btnVoteAbstain").addEventListener("click", () => send({ type: "vote", roomId, choice选择: "ABSTAIN" }));$("btnVoteAbstain").addEventListener("click", ()=> send({ type:"vote", roomId, choice:"ABSTAIN" }));$("btnVoteAbstain").addEventListener("click", () => send({ type: "vote", roomId, choice: "ABSTAIN" }));$("btnVoteAbstain").addEventListener("click", () => send({ type: "vote", roomId, 选择: "ABSTAIN" }));
 
   $("btnCrisisPay").addEventListener("click", ()=>{
-    if(!phaseCanCrisis()) return toast("当前不是危机阶段");
-    const amount = Math.max(1, Math.min(10, Number($("amt").value || 1)));
-    send({ type:"crisis_contribute", roomId, amount });
+    if(!phaseCanCrisis()) return addHintLine("当前不是危机阶段");如果(!phaseCanCrisis()) 返回 addHintLine(“当前不是危机阶段”);
+    const常量 常量amount = Math数学.max最大(1, Math数学.min(10, Number($("amt").value值 || 1)));数学.最大(1, 数学.最小(10, 数字($("金额").值 || 1)));
+    send({ type:"crisis_contribute", roomId, amount });发送({ type:"crisis_contribute", roomId, amount });
   });
 
   $("btnCoupPay").addEventListener("click", ()=>{
-    if(!phaseCanCoupStop()) return toast("当前不是政变阻止阶段");
+    if(!phaseCanCoupStop()) return addHintLine("当前不是政变阻止阶段");如果(!phaseCanCoupStop()) 返回 addHintLine(“当前不是政变阻止阶段”);
     const amount = Math.max(1, Math.min(10, Number($("amt").value || 1)));
-    send({ type:"coup_contribute", roomId, amount });
+    send({ type:"coup_contribute", roomId, amount });发送({ type:"coup_contribute", roomId, amount });发送({ 类型:"coup_contribute", 房间ID, 金额 });发送({ 类型:"coup_contribute", 房间ID, 金额 });
   });
 
   function sendChat(){
     const text = $("chatText").value.trim();
     if(!text) return;
-    send({ type:"chat", roomId, text });
-    $("chatText").value = "";
+    send({ type:"chat", roomId, text });发送({ 类型:"聊天", roomId, 文本 });发送({ 类型:"聊天", roomId, 文本 });发送({ 类型:"聊天", roomId, 文本 });
+    $("chatText").value = "";$(“聊天文本”).值 = "";$("chatText"“聊天文本”).value值值值值值值值值值值值值值值值值="";“聊天文本”值
   }
-  $("btnChat").addEventListener("click", sendChat);
-  $("chatText").addEventListener("keydown", (e)=>{ if(e.key==="Enter") sendChat(); });
+  $("btnChat").addEventListener("click", sendChat);$("btnChat").addEventListener("click", sendChat);$("btnChat").addEventListener("click", sendChat);$("btnChat").addEventListener("click", sendChat);$("btnChat").addEventListener("click", sendChat);
+  $("chatText"“聊天文本”).addEventListener("keydown", (e)=>{ if(e.key==="Enter") sendChat(); });$("chatText"“聊天文本”“聊天文本”).addEventListener"keydown",e=>{ifkey==="Enter"sendChat;}$("chatText"“聊天文本”).addEventListener("keydown", e => {if(key === "Enter") sendChat;});ifkey$("chatText").addEventListener("keydown", e => {if(key === "Enter") sendChat;});ifkey
 
-  // initial render
-  render();
-  renderLog();
+  // initial UI// 初始UI
+  setConn("未连接", false);
+  updateNextStepHint();
+  render();渲染();
+  renderLog();渲染日志();
 })();
 </script>
 </body>
