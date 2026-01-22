@@ -44,7 +44,17 @@
       mix-blend-mode:overlay;
       opacity:.14;
     }
-    .wrap{max-width:1280px; margin:0 auto; padding:18px 18px 28px}
+
+    /* --- Starfield canvas --- */
+    #fxCanvas{
+      position:fixed; inset:0;
+      z-index:0;
+      pointer-events:none;
+      opacity:.9;
+      filter: saturate(1.05) contrast(1.05);
+    }
+
+    .wrap{max-width:1280px; margin:0 auto; padding:18px 18px 28px; position:relative; z-index:1;}
     .topbar{
       display:flex; gap:12px; align-items:center; justify-content:space-between;
       padding:14px 16px;
@@ -61,6 +71,7 @@
       background: conic-gradient(from 210deg, rgba(78,231,255,.95), rgba(180,140,255,.9), rgba(255,102,204,.85), rgba(78,231,255,.95));
       box-shadow: 0 0 0 1px rgba(255,255,255,.12), 0 10px 32px rgba(78,231,255,.14);
       position:relative;
+      overflow:hidden;
     }
     .logo:after{
       content:"";
@@ -69,6 +80,16 @@
       background:linear-gradient(180deg, rgba(10,14,28,.9), rgba(5,6,12,.8));
       box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
     }
+    .logo:before{
+      content:"";
+      position:absolute; inset:-30px;
+      background: radial-gradient(circle at 30% 20%, rgba(255,255,255,.25), transparent 55%);
+      transform: rotate(12deg);
+      animation: sheen 6.2s ease-in-out infinite;
+      opacity:.6;
+    }
+    @keyframes sheen{ 0%,100%{transform:translateX(-12px) rotate(10deg)} 50%{transform:translateX(18px) rotate(10deg)} }
+
     .brand h1{margin:0; font-size:15px; letter-spacing:.5px}
     .brand .sub{font-size:12px; color:var(--muted); margin-top:2px}
     .pillrow{display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end}
@@ -103,19 +124,30 @@
       box-shadow:var(--shadow);
       backdrop-filter: blur(10px);
       overflow:hidden;
+      position:relative;
+    }
+    .panel:before{
+      content:"";
+      position:absolute; inset:-1px;
+      pointer-events:none;
+      background: radial-gradient(800px 260px at 25% 0%, rgba(78,231,255,.10), transparent 55%),
+                  radial-gradient(680px 240px at 75% 0%, rgba(180,140,255,.10), transparent 58%);
+      opacity:.9;
     }
     .panelHeader{
       display:flex; align-items:center; justify-content:space-between;
       padding:12px 14px;
       border-bottom:1px solid rgba(255,255,255,.08);
       background:rgba(10,12,24,.35);
+      position:relative;
+      z-index:1;
     }
     .panelHeader .title{font-size:13px; letter-spacing:.35px; color:var(--text); display:flex; gap:10px; align-items:center}
     .panelHeader .title .dot{
       width:8px; height:8px; border-radius:999px; background:var(--cyan);
       box-shadow:0 0 16px rgba(78,231,255,.6);
     }
-    .panelBody{padding:14px}
+    .panelBody{padding:14px; position:relative; z-index:1;}
     .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
     .grow{flex:1}
     .muted{color:var(--muted)}
@@ -145,6 +177,8 @@
       user-select:none;
       font-weight:640;
       letter-spacing:.2px;
+      position:relative;
+      overflow:hidden;
     }
     button:hover{filter:brightness(1.06)}
     button:active{transform:translateY(1px)}
@@ -153,6 +187,20 @@
       cursor:not-allowed;
       filter:saturate(.3);
       box-shadow:none;
+    }
+    /* ripple */
+    button .rip{
+      position:absolute; border-radius:999px;
+      transform: translate(-50%,-50%);
+      background: radial-gradient(circle, rgba(255,255,255,.35), transparent 60%);
+      width:16px; height:16px;
+      opacity:.0;
+      pointer-events:none;
+      animation: rip .55s ease-out;
+    }
+    @keyframes rip{
+      from{opacity:.75; width:16px; height:16px}
+      to{opacity:0; width:220px; height:220px}
     }
 
     .btnRow{display:flex; gap:10px; flex-wrap:wrap}
@@ -185,7 +233,9 @@
       box-shadow: inset 0 0 0 1px rgba(255,255,255,.04);
       position:relative;
       overflow:hidden;
+      transition: transform .12s ease, border-color .15s ease, filter .15s ease;
     }
+    .pCard:hover{transform: translateY(-1px); border-color: rgba(78,231,255,.18); filter: brightness(1.03)}
     .pCard.me{border-color: rgba(78,231,255,.35); box-shadow: inset 0 0 0 1px rgba(78,231,255,.15), var(--glow)}
     .pCard.turn{outline:2px solid rgba(255,211,106,.40); outline-offset:1px}
     .pCard .name{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px}
@@ -216,16 +266,11 @@
       position:absolute; right:-40px; top:-40px;
       width:140px; height:140px; border-radius:999px;
       background:radial-gradient(circle at 30% 30%, rgba(78,231,255,.28), transparent 58%);
-      filter: blur(0px);
       opacity:.8;
       pointer-events:none;
     }
 
-    .cards{
-      display:flex;
-      flex-wrap:wrap;
-      gap:10px;
-    }
+    .cards{display:flex; flex-wrap:wrap; gap:10px;}
     .card{
       width: calc(50% - 5px);
       min-width: 240px;
@@ -236,9 +281,10 @@
       background:linear-gradient(180deg, rgba(12,16,32,.70), rgba(9,10,18,.55));
       box-shadow: inset 0 0 0 1px rgba(255,255,255,.05);
       position:relative;
-      transition: transform .12s ease, border-color .15s ease;
+      transition: transform .12s ease, border-color .15s ease, filter .15s ease;
+      will-change: transform;
     }
-    .card:hover{transform: translateY(-2px); border-color: rgba(78,231,255,.22)}
+    .card:hover{transform: translateY(-2px); border-color: rgba(78,231,255,.22); filter: brightness(1.03)}
     .card .top{display:flex; align-items:center; justify-content:space-between; gap:10px}
     .card .nm{font-weight:720; letter-spacing:.25px}
     .card .meta{font-size:11px; color:var(--muted)}
@@ -292,10 +338,18 @@
       box-shadow: 0 0 18px rgba(78,231,255,.28);
     }
 
+    .poolBar{ margin-top:10px; }
+    .poolBar .bar{ width:100%; height:10px;}
+    .poolBar .bar > i{
+      background:linear-gradient(90deg, rgba(255,211,106,.85), rgba(78,231,255,.85));
+      box-shadow: 0 0 20px rgba(255,211,106,.22);
+    }
+
     .log{
       max-height: 420px;
       overflow:auto;
       padding-right:6px;
+      scroll-behavior:smooth;
     }
     .log .line{
       padding:9px 10px;
@@ -307,6 +361,7 @@
       color:rgba(234,240,255,.92);
       line-height:1.35;
       animation: pop .18s ease;
+      white-space: pre-wrap;
     }
     @keyframes pop{from{transform:translateY(4px); opacity:.65} to{transform:translateY(0); opacity:1}}
     .hint{
@@ -349,10 +404,57 @@
       background:rgba(0,0,0,.25);
       color:var(--muted);
     }
+
+    /* --- Toast --- */
+    .toastWrap{
+      position:fixed;
+      right:14px; top:14px;
+      z-index:120;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      pointer-events:none;
+    }
+    .toast{
+      pointer-events:none;
+      min-width: 220px;
+      max-width: 360px;
+      padding:10px 12px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.12);
+      background:linear-gradient(180deg, rgba(20,26,56,.82), rgba(6,8,16,.72));
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+      animation: toastIn .18s ease;
+    }
+    @keyframes toastIn{from{transform:translateY(-6px); opacity:.55} to{transform:translateY(0); opacity:1}}
+    .toast .t{font-weight:750; font-size:12px}
+    .toast .d{margin-top:4px; font-size:12px; color:rgba(234,240,255,.9)}
+    .toast.ok{border-color:rgba(65,243,163,.32)}
+    .toast.err{border-color:rgba(255,77,109,.32)}
+    .toast.warn{border-color:rgba(255,211,106,.32)}
+
+    /* phase flash */
+    .phaseFlash{
+      position:fixed; inset:0;
+      pointer-events:none;
+      z-index:80;
+      opacity:0;
+      background:
+        radial-gradient(1200px 600px at 50% 20%, rgba(78,231,255,.12), transparent 60%),
+        radial-gradient(1000px 560px at 30% 90%, rgba(255,102,204,.10), transparent 62%);
+      transition: opacity .35s ease;
+    }
+    .phaseFlash.on{opacity:1}
   </style>
 </head>
 
 <body class="noise">
+  <canvas id="fxCanvas"></canvas>
+  <div class="phaseFlash" id="phaseFlash"></div>
+
+  <div class="toastWrap" id="toastWrap"></div>
+
   <div class="wrap">
 
     <div class="topbar">
@@ -374,7 +476,7 @@
     </div>
 
     <div class="grid">
-      <!-- LEFT: main -->
+      <!-- LEFT -->
       <div class="panel">
         <div class="panelHeader">
           <div class="title"><span class="dot"></span> 盘面</div>
@@ -402,7 +504,10 @@
                 <div class="item">
                   <div class="k">胜利阈值 / 民意池</div>
                   <div class="v"><span id="thr">-</span> / <span id="pool">-</span></div>
-                  <div class="small muted" style="margin-top:6px; line-height:1.35">
+                  <div class="poolBar">
+                    <div class="bar"><i id="poolBar"></i></div>
+                  </div>
+                  <div class="small muted" style="margin-top:6px; line-height:1.35" id="winRuleHint">
                     选举冲线：<span class="kbd">S ≥ 阈值</span> 且 <span class="kbd">supportPool = 0</span>
                   </div>
                 </div>
@@ -433,7 +538,7 @@
         </div>
       </div>
 
-      <!-- RIGHT: control + log -->
+      <!-- RIGHT -->
       <div class="panel">
         <div class="panelHeader">
           <div class="title"><span class="dot" style="background:var(--vio)"></span> 控制台</div>
@@ -559,7 +664,7 @@
 
           <div class="hr"></div>
 
-          <div class="small muted" style="margin-bottom:8px">事件日志</div>
+          <div class="small muted" style="margin-bottom:8px">事件日志（增量追加，不闪屏）</div>
           <div class="log" id="log"></div>
 
           <div class="hint" style="margin-top:10px">
@@ -568,6 +673,7 @@
             <div>2) 行动阶段点「打出暗置牌」</div>
             <div>3) 若出现联盟提案，可点「接受联盟」</div>
             <div>4) 政变时用「政变贡献」或打反应牌</div>
+            <div style="margin-top:6px">（密谋阶段可点玩家卡片发起“质疑”）</div>
           </div>
 
         </div>
@@ -576,7 +682,7 @@
 
   </div>
 
-  <!-- Modal: choose facedown -->
+  <!-- Modal -->
   <div class="modalMask" id="modalMask">
     <div class="modal">
       <div class="modalHead">
@@ -594,16 +700,24 @@
 (() => {
   const $ = (id) => document.getElementById(id);
 
-  // --- Config / State ---
+  // --- WS state ---
   let ws = null;
   let roomId = "";
   let playerId = "";
   let pub = null;
   let priv = null;
 
-  let lastPhaseEndsAt = null;
-  let lastNowSync = Date.now();
+  // --- timer sync ---
+  // 估算服务器时间 = Date.now() + serverOffset
+  // serverOffset = (phaseEndsAt - knownDuration) - Date.now() 很难严谨
+  // 这里采用：每次收到 state，用 phaseEndsAt 与当前 localTime 对齐，平滑一个 offset
+  let serverOffset = 0; // ms
   let timerTick = null;
+
+  // --- log incremental ---
+  let lastLogKey = "";        // 用最后一行内容当游标
+  let lastLogLen = 0;         // 同时记录长度作为辅助
+  let suppressLogReset = false;
 
   const wsUrlInput = $("wsUrl");
   const roomIdInput = $("roomId");
@@ -621,6 +735,8 @@
   const crisisText = $("crisisText");
   const thr = $("thr");
   const pool = $("pool");
+  const poolBar = $("poolBar");
+  const winRuleHint = $("winRuleHint");
 
   const playersEl = $("players");
   const handEl = $("hand");
@@ -632,6 +748,9 @@
 
   const timerText = $("timerText");
   const timerBar = $("timerBar");
+
+  const phaseFlash = $("phaseFlash");
+  const toastWrap = $("toastWrap");
 
   // Modal
   const modalMask = $("modalMask");
@@ -645,9 +764,7 @@
     modalTitle.textContent = title || "操作";
     modalBody.innerHTML = contentHTML || "";
     modalMask.style.display = "flex";
-    return new Promise((resolve) => {
-      modalResolve = resolve;
-    });
+    return new Promise((resolve) => modalResolve = resolve);
   }
   function closeModal(val) {
     modalMask.style.display = "none";
@@ -659,6 +776,16 @@
   modalMask.addEventListener("click", (e) => {
     if (e.target === modalMask) closeModal(null);
   });
+
+  // --- Toast ---
+  function toast(kind, title, detail, ttl=2600){
+    const div = document.createElement("div");
+    div.className = "toast " + (kind || "warn");
+    div.innerHTML = `<div class="t">${escapeHtml(title||"提示")}</div><div class="d">${escapeHtml(detail||"")}</div>`;
+    toastWrap.appendChild(div);
+    setTimeout(()=>{ div.style.opacity="0"; div.style.transform="translateY(-6px)"; }, ttl - 350);
+    setTimeout(()=>{ try{toastWrap.removeChild(div)}catch{} }, ttl);
+  }
 
   // --- Helpers ---
   function tagClass(tag){
@@ -681,46 +808,109 @@
     if (!canSend()) return;
     ws.send(JSON.stringify(obj));
   }
-  function appendLog(line){
-    const div = document.createElement("div");
-    div.className = "line";
-    div.textContent = line;
-    logEl.prepend(div);
-    // keep reasonable
-    while (logEl.children.length > 160) logEl.removeChild(logEl.lastChild);
-  }
   function setConn(s){
     connState.textContent = s;
   }
 
+  function addRipple(btn, x, y){
+    const r = document.createElement("i");
+    r.className = "rip";
+    r.style.left = x + "px";
+    r.style.top = y + "px";
+    btn.appendChild(r);
+    setTimeout(()=>{ try{btn.removeChild(r)}catch{} }, 650);
+  }
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn || btn.disabled) return;
+    const rect = btn.getBoundingClientRect();
+    addRipple(btn, e.clientX - rect.left, e.clientY - rect.top);
+  }, {capture:true});
+
   // --- Timer ---
-  function updateTimer(){
-    if (!pub) { timerText.textContent = "--"; timerBar.style.width="0%"; return; }
-    const endsAt = pub.phaseEndsAt;
-    if (!endsAt) { timerText.textContent = "∞"; timerBar.style.width="0%"; return; }
-
-    // pub.phaseEndsAt is server time millis. We approximate with local time.
-    const nowLocal = Date.now();
-    const msLeft = Math.max(0, endsAt - nowLocal);
-    const sec = Math.ceil(msLeft / 1000);
-    timerText.textContent = sec + "s";
-
-    // Estimate bar: we need duration; store last phase ends.
-    // We'll approximate: if phase changes, we reset bar to 100%.
+  function phaseDurationGuess(ph){
     let dur = 30000;
-    const ph = pub.phase;
     if (ph === "PLOTTING") dur = 30000;
     if (ph === "REACTION") dur = 10000;
     if (ph === "VOTE") dur = 20000;
     if (ph === "CRISIS") dur = 15000;
     if (ph === "COUP_NEGOTIATION") dur = 30000;
     if (ph === "COUP_REACTION") dur = 12000;
+    return dur;
+  }
 
+  function updateTimer(){
+    if (!pub) { timerText.textContent = "--"; timerBar.style.width="0%"; return; }
+    const endsAt = pub.phaseEndsAt;
+    if (!endsAt) { timerText.textContent = "∞"; timerBar.style.width="0%"; return; }
+
+    const nowServer = Date.now() + serverOffset;
+    const msLeft = Math.max(0, endsAt - nowServer);
+    const sec = Math.ceil(msLeft / 1000);
+    timerText.textContent = sec + "s";
+
+    const dur = phaseDurationGuess(pub.phase);
     const pct = Math.max(0, Math.min(1, msLeft / dur));
     timerBar.style.width = (pct * 100).toFixed(1) + "%";
   }
 
+  function flashPhase(){
+    phaseFlash.classList.add("on");
+    setTimeout(()=>phaseFlash.classList.remove("on"), 380);
+  }
+
+  // --- Log incremental rendering ---
+  function appendLogLine(line){
+    const div = document.createElement("div");
+    div.className = "line";
+    div.textContent = line;
+    logEl.prepend(div);
+    while (logEl.children.length > 160) logEl.removeChild(logEl.lastChild);
+  }
+  function syncLogIncremental(){
+    if (!pub || !Array.isArray(pub.log)) return;
+
+    const arr = pub.log.slice(-140); // keep tail
+    const len = arr.length;
+    const lastLine = len ? arr[len-1] : "";
+
+    // 如果对局重置/切房间：清空一次
+    const roomKey = `${pub.roomId||""}#${playerId||""}`;
+    const hardReset = (!lastLogKey && len>0) || (len < lastLogLen) || suppressLogReset;
+
+    if (hardReset){
+      suppressLogReset = false;
+      logEl.innerHTML = "";
+      // newest first
+      [...arr].reverse().forEach(appendLogLine);
+      lastLogLen = len;
+      lastLogKey = lastLine;
+      return;
+    }
+
+    // 常规：只追加“新增的尾部”
+    if (len === lastLogLen && lastLine === lastLogKey) return;
+
+    // 找到 lastLogKey 在新数组里最后一次出现的位置
+    let idx = -1;
+    if (lastLogKey !== ""){
+      for (let i = len-1; i >= 0; i--){
+        if (arr[i] === lastLogKey) { idx = i; break; }
+      }
+    }
+    const start = idx >= 0 ? idx + 1 : Math.max(0, len - 10);
+    const newLines = arr.slice(start);
+
+    // 新日志逐条 prepend（保持“最新在上”）
+    // newLines 是按时间顺序，最后一条最新；我们要先 prepend 最新 -> reverse
+    [...newLines].reverse().forEach(appendLogLine);
+
+    lastLogLen = len;
+    lastLogKey = lastLine;
+  }
+
   // --- Rendering ---
+  let lastPhase = "";
   function render(){
     roomPill.textContent = roomId || "-";
     mePill.textContent = playerId || "-";
@@ -734,16 +924,33 @@
       crisisText.textContent = "-";
       thr.textContent = "-";
       pool.textContent = "-";
+      poolBar.style.width = "0%";
       playersEl.innerHTML = "";
       handEl.innerHTML = "";
       return;
     }
 
-    phasePill.textContent = fmtPhase(pub.phase);
+    const phase = pub.phase || "";
+    if (phase && phase !== lastPhase){
+      flashPhase();
+      lastPhase = phase;
+      toast("warn", "阶段切换", `进入：${fmtPhase(phase)}`, 1400);
+    }
+
+    phasePill.textContent = fmtPhase(phase);
     turnPill.textContent = pub.turn ? `${pub.turn}` : "-";
 
     thr.textContent = pub.electionThreshold ?? "-";
-    pool.textContent = (pub.supportPool ?? 0);
+    const sp = (pub.supportPool ?? 0);
+    pool.textContent = sp;
+
+    // supportPool bar (按 0~12+ 估算，纯视觉)
+    const maxPoolGuess = Math.max(12, (pub.players?.length||4) + 8);
+    const pct = Math.max(0, Math.min(1, sp / maxPoolGuess));
+    poolBar.style.width = (pct * 100).toFixed(1) + "%";
+
+    // 胜利规则提示（如果后端以后改回允许 pool>0 冲线，这里也能改）
+    winRuleHint.innerHTML = `选举冲线：<span class="kbd">S ≥ 阈值</span> 且 <span class="kbd">supportPool = 0</span>`;
 
     if (pub.agenda){
       agendaName.textContent = pub.agenda.name;
@@ -766,6 +973,7 @@
       div.className = "pCard" +
         (p.id === playerId ? " me" : "") +
         (p.id === curId && pub.phase === "ACTION" ? " turn" : "");
+      div.dataset.pid = p.id;
       div.innerHTML = `
         <div class="ring"></div>
         <div class="name">
@@ -784,6 +992,7 @@
           <div class="stat"><span class="k">M</span><b>${p.M}</b></div>
           <div class="stat"><span class="k">W</span><b>${p.coupW||0}</b></div>
         </div>
+        ${pub.phase==="PLOTTING" && p.id!==playerId ? `<div class="small muted" style="margin-top:10px">点此可质疑</div>` : ``}
       `;
       playersEl.appendChild(div);
     });
@@ -852,7 +1061,7 @@
         }
       });
 
-      // show facedown hint
+      // facedown hint
       const fd = my.facedownId;
       if (fd){
         handHint.style.display = "block";
@@ -860,12 +1069,8 @@
       }
     }
 
-    // Log (server authoritative log)
-    if (Array.isArray(pub.log)){
-      logEl.innerHTML = "";
-      // newest last in array; we want newest on top -> reverse
-      [...pub.log].slice(-120).reverse().forEach(line => appendLog(line));
-    }
+    // log incremental
+    syncLogIncremental();
 
     updateButtons();
     updateTimer();
@@ -874,26 +1079,29 @@
   function updateButtons(){
     const phase = pub?.phase;
     const my = priv?.me;
+    const ended = (phase === "END");
 
-    $("btnStart").disabled = !canSend();
-    $("btnAddAI").disabled = !canSend();
+    const baseCan = canSend() && !ended;
+
+    $("btnStart").disabled = !canSend() || ended;
+    $("btnAddAI").disabled = !canSend() || ended;
     $("btnPing").disabled = !canSend();
-    $("btnSetDecl").disabled = !(canSend() && phase === "PLOTTING");
-    $("btnPlayFacedown").disabled = !(canSend() && phase === "ACTION" && pub?.currentPlayerId === playerId && (my?.facedownId));
-    $("btnPrepCoup").disabled = !(canSend() && phase === "ACTION" && pub?.currentPlayerId === playerId);
-    $("btnLaunchCoup").disabled = !(canSend() && phase === "ACTION" && pub?.currentPlayerId === playerId);
-    $("btnAcceptAlliance").disabled = !(canSend() && phase === "REACTION" && pub?.allianceOffer && pub?.allianceOffer.toId === playerId);
+    $("btnSetDecl").disabled = !(baseCan && phase === "PLOTTING");
+    $("btnPlayFacedown").disabled = !(baseCan && phase === "ACTION" && pub?.currentPlayerId === playerId && (my?.facedownId));
+    $("btnPrepCoup").disabled = !(baseCan && phase === "ACTION" && pub?.currentPlayerId === playerId);
+    $("btnLaunchCoup").disabled = !(baseCan && phase === "ACTION" && pub?.currentPlayerId === playerId);
+    $("btnAcceptAlliance").disabled = !(baseCan && phase === "REACTION" && pub?.allianceOffer && pub?.allianceOffer.toId === playerId);
 
-    $("btnVoteYes").disabled = !(canSend() && phase === "VOTE");
-    $("btnVoteNo").disabled = !(canSend() && phase === "VOTE");
-    $("btnVoteAbstain").disabled = !(canSend() && phase === "VOTE");
+    $("btnVoteYes").disabled = !(baseCan && phase === "VOTE");
+    $("btnVoteNo").disabled = !(baseCan && phase === "VOTE");
+    $("btnVoteAbstain").disabled = !(baseCan && phase === "VOTE");
 
-    $("btnCrisisContrib").disabled = !(canSend() && phase === "CRISIS");
-    $("btnCoupContrib").disabled = !(canSend() && (phase === "COUP_NEGOTIATION" || phase === "COUP_REACTION"));
+    $("btnCrisisContrib").disabled = !(baseCan && phase === "CRISIS");
+    $("btnCoupContrib").disabled = !(baseCan && (phase === "COUP_NEGOTIATION" || phase === "COUP_REACTION"));
 
-    $("btnPlayReaction").disabled = !(canSend() && (phase === "REACTION" || phase === "COUP_NEGOTIATION" || phase === "COUP_REACTION"));
+    $("btnPlayReaction").disabled = !(baseCan && (phase === "REACTION" || phase === "COUP_NEGOTIATION" || phase === "COUP_REACTION"));
 
-    $("btnChat").disabled = !canSend();
+    $("btnChat").disabled = !canSend(); // 终局也允许聊天（可选）
   }
 
   // --- Actions (WS) ---
@@ -902,23 +1110,10 @@
     const name = (nameInput.value || "玩家").trim();
     send({type:"join", roomId, name});
   }
-
-  function wsAddAI(){
-    send({type:"add_ai", roomId, count:1});
-  }
-
-  function wsStart(){
-    send({type:"start", roomId});
-  }
-
-  function wsPing(){
-    send({type:"ping_state", roomId});
-  }
-
-  function wsSetFacedown(cardId){
-    send({type:"plot_set_facedown", roomId, cardId});
-  }
-
+  function wsAddAI(){ send({type:"add_ai", roomId, count:1}); }
+  function wsStart(){ send({type:"start", roomId}); }
+  function wsPing(){ send({type:"ping_state", roomId}); }
+  function wsSetFacedown(cardId){ send({type:"plot_set_facedown", roomId, cardId}); }
   function wsSetDecl(){
     send({
       type:"plot_set_declaration",
@@ -926,39 +1121,16 @@
       tag: $("declTag").value,
       text: ($("declText").value || "").slice(0,60),
     });
+    toast("ok","声明已发送","等待密谋阶段结束…",1400);
   }
-
-  function wsChallenge(targetId){
-    send({type:"challenge", roomId, targetId});
-  }
-
-  function wsAction(actionKey, payload){
-    send({type:"action", roomId, actionKey, payload: payload || {}});
-  }
-
-  function wsVote(choice){
-    send({type:"vote", roomId, choice});
-  }
-
-  function wsCrisisContrib(amount){
-    send({type:"crisis_contribute", roomId, amount});
-  }
-
-  function wsCoupContrib(amount){
-    send({type:"coup_contribute", roomId, amount});
-  }
-
-  function wsReaction(cardId){
-    send({type:"reaction", roomId, cardId});
-  }
-
-  function wsAcceptAlliance(){
-    send({type:"accept_alliance", roomId});
-  }
-
-  function wsChat(text){
-    send({type:"chat", roomId, text});
-  }
+  function wsChallenge(targetId){ send({type:"challenge", roomId, targetId}); }
+  function wsAction(actionKey, payload){ send({type:"action", roomId, actionKey, payload: payload || {}}); }
+  function wsVote(choice){ send({type:"vote", roomId, choice}); }
+  function wsCrisisContrib(amount){ send({type:"crisis_contribute", roomId, amount}); }
+  function wsCoupContrib(amount){ send({type:"coup_contribute", roomId, amount}); }
+  function wsReaction(cardId){ send({type:"reaction", roomId, cardId}); }
+  function wsAcceptAlliance(){ send({type:"accept_alliance", roomId}); }
+  function wsChat(text){ send({type:"chat", roomId, text}); }
 
   // --- UI wire ---
   $("btnConnect").onclick = () => {
@@ -988,7 +1160,7 @@
 
   $("btnPlayReaction").onclick = () => {
     const cid = reactSel.value;
-    if (!cid) return;
+    if (!cid) return toast("warn","缺少选择","请先选择一张 REACTION 牌",1600);
     wsReaction(cid);
   };
 
@@ -1008,24 +1180,24 @@
     if (!act || !cid) return;
 
     if (act === "setfacedown"){
+      if (pub?.phase !== "PLOTTING"){
+        toast("warn","只能在密谋设暗置","请等待下一回合密谋阶段",1700);
+        return;
+      }
       wsSetFacedown(cid);
+      toast("ok","已设为暗置",`暗置牌：${cid}`,1300);
     }
     if (act === "quickplay"){
-      // This must be ACTION phase and it must be your turn.
-      // But protocol only supports PLAY_FACEDOWN (using facedownId).
-      // So we do: set facedown then play facedown.
+      // 协议限制：行动阶段不能换暗置
       (async () => {
         if (!pub || pub.phase !== "ACTION") return;
-        if (pub.currentPlayerId !== playerId) return;
-
-        // set facedown via plotting API is only allowed in PLOTTING by server.
-        // So in ACTION phase we cannot set facedown; fallback: show modal guidance.
+        if (pub.currentPlayerId !== playerId) return toast("warn","还没轮到你","当前不能出牌",1500);
         await openModal({
-          title:"无法直接在行动阶段更换暗置",
+          title:"协议限制：行动阶段不能换暗置",
           contentHTML:`<div class="hint">
-            服务器协议中 <span class="kbd">plot_set_facedown</span> 仅允许在密谋阶段使用。<br/>
-            你可以在 <b>密谋阶段</b> 先点“设为暗置”，然后行动阶段点“打出暗置牌”。<br/><br/>
-            （如需支持行动阶段任意出牌，需要改后端协议/逻辑，不建议。）
+            服务器协议中 <span class="kbd">plot_set_facedown</span> 仅允许在 <b>密谋阶段</b> 使用。<br/>
+            正确流程：<b>密谋阶段</b> 先点“设为暗置”，<b>行动阶段</b> 点“打出暗置牌”。<br/><br/>
+            （如果你希望行动阶段任意出牌，需要扩展后端协议，不建议为了轻量版破坏兼容性。）
           </div>`
         });
         closeModal(null);
@@ -1033,30 +1205,7 @@
     }
   });
 
-  // Players click: challenge shortcut
-  playersEl.addEventListener("click", async (e) => {
-    const card = e.target.closest(".pCard");
-    if (!card || !pub) return;
-
-    // If plotting: click a player card to challenge quickly (excluding self)
-    if (pub.phase !== "PLOTTING") return;
-
-    // find id by matching name+stats? We'll store on DOM by building with data-id in a better way:
-  });
-
-  // better: store data-id while rendering
-  const renderOriginal = render;
-  render = function(){
-    renderOriginal();
-    // patch players to include data-id for challenge click
-    if (pub && playersEl.children.length){
-      [...playersEl.children].forEach((el, idx) => {
-        const pid = pub.players[idx]?.id;
-        if (pid) el.dataset.pid = pid;
-      });
-    }
-  };
-
+  // Players click: challenge
   playersEl.addEventListener("click", async (e) => {
     const el = e.target.closest(".pCard");
     if (!el || !pub) return;
@@ -1064,36 +1213,48 @@
     if (!pid || pid === playerId) return;
 
     if (pub.phase === "PLOTTING"){
+      const pName = (pub.players.find(x=>x.id===pid)?.name) || pid;
       const ok = await openModal({
         title:"发起质疑？",
         contentHTML:`<div class="hint">
-          你将质疑 <b>${escapeHtml((pub.players.find(x=>x.id===pid)?.name)||pid)}</b>。<br/>
+          你将质疑 <b>${escapeHtml(pName)}</b>。<br/>
           需要你与对方各有 ≥1 筹码，双方各押 1 进入争议池。<br/><br/>
           点击“确认”发送 <span class="kbd">challenge</span>。
         </div>`
       });
-      if (ok) wsChallenge(pid);
+      if (ok) {
+        wsChallenge(pid);
+        toast("warn","已发起质疑",`目标：${pName}`,1600);
+      }
       closeModal(null);
     }
   });
 
   // --- Connect ---
   function connect(url){
-    if (ws) {
-      try { ws.close(); } catch {}
-      ws = null;
-    }
+    if (ws) { try { ws.close(); } catch {} ws = null; }
     setConn("连接中…");
+    toast("warn","连接中",url,1400);
+
     ws = new WebSocket(url);
 
     ws.onopen = () => {
       setConn("已连接");
+      toast("ok","已连接","正在加入房间…",1300);
+
       roomId = (roomIdInput.value || "room1").trim() || "room1";
       playerId = "";
       pub = null; priv = null;
+
+      // log reset for new session
+      suppressLogReset = true;
+      lastLogKey = "";
+      lastLogLen = 0;
+
       wsJoin();
+
       if (timerTick) clearInterval(timerTick);
-      timerTick = setInterval(updateTimer, 200);
+      timerTick = setInterval(updateTimer, 180);
     };
 
     ws.onmessage = (ev) => {
@@ -1102,23 +1263,39 @@
       if (!msg || !msg.type) return;
 
       if (msg.type === "error"){
-        appendLog("❌ " + (msg.message || "错误"));
+        toast("err","服务器错误", msg.message || "未知错误", 2600);
         return;
       }
 
       if (msg.type === "joined"){
         playerId = msg.playerId || "";
         pub = msg.state || pub;
+
+        // 初次拿到 state：重置日志游标
+        suppressLogReset = true;
         render();
-        appendLog("✅ 已加入房间。你的 playerId=" + playerId);
+
+        toast("ok","加入成功", "playerId=" + playerId, 1700);
         wsPing();
         return;
       }
 
       if (msg.type === "state"){
-        pub = msg.state || pub;
-        lastPhaseEndsAt = pub?.phaseEndsAt || null;
-        render();
+        const incoming = msg.state || null;
+        if (incoming){
+          // 用 endsAt 修正 serverOffset：让 serverNow ≈ localNow + offset
+          // 只在有 phaseEndsAt 时更新，避免∞阶段乱漂移
+          if (incoming.phaseEndsAt){
+            // 估算“服务器还剩多少时间”在本机也应接近那个值：这里做一个轻微平滑
+            const guessOffset = (incoming.phaseEndsAt - (Date.now() + serverOffset));
+            // guessOffset 是残差，不是 offset；我们只要减小误差即可
+            serverOffset += guessOffset * 0.15;
+            // 限幅避免飞
+            serverOffset = Math.max(-8000, Math.min(8000, serverOffset));
+          }
+          pub = incoming;
+          render();
+        }
         return;
       }
 
@@ -1135,11 +1312,11 @@
       if (timerTick) clearInterval(timerTick);
       timerText.textContent = "--";
       timerBar.style.width = "0%";
-      appendLog("ℹ️ 连接已断开。");
+      toast("warn","连接断开","你可以重新连接",2000);
     };
 
     ws.onerror = () => {
-      appendLog("⚠️ WS 错误：请检查地址/端口/CORS/反代。");
+      toast("err","WS 错误","请检查地址/端口/反代",2600);
     };
   }
 
@@ -1157,6 +1334,66 @@
     if (s.length <= 6) return s;
     return s.slice(-4);
   }
+
+  // --- FX Canvas: star particles ---
+  const cvs = $("fxCanvas");
+  const ctx = cvs.getContext("2d", {alpha:true});
+  let W = 0, H = 0, dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  let particles = [];
+  function resize(){
+    W = window.innerWidth; H = window.innerHeight;
+    cvs.width = Math.floor(W * dpr);
+    cvs.height = Math.floor(H * dpr);
+    cvs.style.width = W + "px";
+    cvs.style.height = H + "px";
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+
+    const count = Math.floor((W*H) / 28000);
+    particles = new Array(Math.max(32, Math.min(120, count))).fill(0).map(()=>spawn());
+  }
+  function spawn(){
+    return {
+      x: Math.random()*W,
+      y: Math.random()*H,
+      r: Math.random()*1.6 + 0.4,
+      a: Math.random()*0.35 + 0.08,
+      vx: (Math.random()*2-1) * 0.08,
+      vy: (Math.random()*2-1) * 0.06,
+      tw: Math.random()*Math.PI*2,
+      c: Math.random()<0.5 ? "78,231,255" : (Math.random()<0.66 ? "180,140,255" : "255,102,204")
+    };
+  }
+  function step(){
+    if (!ctx) return;
+    ctx.clearRect(0,0,W,H);
+
+    // subtle vignette
+    ctx.fillStyle = "rgba(0,0,0,.08)";
+    ctx.fillRect(0,0,W,H);
+
+    for (const p of particles){
+      p.tw += 0.02 + p.r*0.006;
+      p.x += p.vx;
+      p.y += p.vy;
+      if (p.x < -40) p.x = W+40;
+      if (p.x > W+40) p.x = -40;
+      if (p.y < -40) p.y = H+40;
+      if (p.y > H+40) p.y = -40;
+
+      const pulse = (Math.sin(p.tw)*0.5+0.5);
+      const alpha = p.a * (0.55 + pulse*0.7);
+
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(${p.c},${alpha})`;
+      ctx.arc(p.x, p.y, p.r*(0.85 + pulse*0.35), 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    requestAnimationFrame(step);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+  requestAnimationFrame(step);
 
   // Defaults
   wsUrlInput.value = `ws://${location.hostname}:3000`;
